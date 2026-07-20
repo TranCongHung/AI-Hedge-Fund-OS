@@ -1,0 +1,13 @@
+engine: postgresql
+
+host: localhost
+
+port: 5432
+
+database: ai_hedge_fund
+
+username: postgres
+
+password:
+
+ssl: false

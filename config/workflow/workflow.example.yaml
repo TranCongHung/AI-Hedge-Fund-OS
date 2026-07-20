@@ -1,0 +1,9 @@
+retry: 3
+
+timeout: 30
+
+logging: true
+
+save_history: true
+
+timezone: Asia/Ho_Chi_Minh

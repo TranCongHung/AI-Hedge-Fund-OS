@@ -1,0 +1,20 @@
+binance:
+  enabled: true
+  api_key:
+  secret:
+
+coingecko:
+  enabled: true
+  api_key:
+
+fred:
+  enabled: true
+  api_key:
+
+telegram:
+  enabled: true
+  bot_token:
+
+notion:
+  enabled: false
+  api_key:

@@ -1,0 +1,9 @@
+{
+    "symbol":"BTCUSDT",
+    "timeframe":"1h",
+    "open":100000,
+    "high":101000,
+    "low":99500,
+    "close":100500,
+    "volume":500
+}

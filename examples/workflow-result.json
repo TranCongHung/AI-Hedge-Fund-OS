@@ -1,0 +1,9 @@
+{
+  "workflow_id": "WF-001",
+  "status": "success",
+  "timestamp": "2026-07-14T09:00:00+07:00",
+  "data": {
+    "symbol": "BTCUSDT",
+    "price": 120000
+  }
+}
