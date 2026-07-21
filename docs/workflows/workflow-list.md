@@ -1,5 +1,4 @@
 # Workflow List
-
 | Workflow | Name | Module | Trigger | Status |
 |-----------|------|---------|----------|--------|
 | WF-001 | Binance Collector | Collector | Schedule | ✅ Active |
