@@ -1,0 +1,129 @@
+{
+  "name": "WF-001-binance-price",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 5 }] }
+      },
+      "id": "sch-trigger-001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "workflow_id", "value": "WF-001", "type": "string" },
+            { "id": "a2", "name": "version", "value": "v1.0", "type": "string" },
+            { "id": "a3", "name": "started_at", "value": "={{$now.toISO()}}", "type": "string" }
+          ]
+        }
+      },
+      "id": "set-meta-001",
+      "name": "Set Workflow Meta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-160, 300]
+    },
+
+    { "parameters": { "method": "GET", "url": "https://api.binance.com/api/v3/klines", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "symbol", "value": "BTCUSDT" }, { "name": "interval", "value": "1m" }, { "name": "limit", "value": "1" } ] }, "options": {} },
+      "id": "http-btc-001", "name": "HTTP Request BTCUSDT", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [120, 80],
+      "retryOnFail": true, "maxTries": 3, "waitBetweenTries": 2000 },
+    { "parameters": { "jsCode": "const raw = $input.first().json;\nconst k = raw[0];\nreturn [{\n  json: {\n    symbol: \"BTCUSDT\",\n    timeframe: \"1m\",\n    open_time: new Date(k[0]).toISOString(),\n    open: parseFloat(k[1]),\n    high: parseFloat(k[2]),\n    low: parseFloat(k[3]),\n    close: parseFloat(k[4]),\n    volume: parseFloat(k[5]),\n    source: \"binance\"\n  }\n}];" },
+      "id": "code-btc-001", "name": "Parse BTCUSDT", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [360, 80] },
+    { "parameters": { "operation": "insert", "schema": { "value": "public" }, "table": { "value": "market_prices" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "symbol": "={{$json.symbol}}", "timeframe": "={{$json.timeframe}}", "open_time": "={{$json.open_time}}",
+          "open": "={{$json.open}}", "high": "={{$json.high}}", "low": "={{$json.low}}", "close": "={{$json.close}}",
+          "volume": "={{$json.volume}}", "source": "={{$json.source}}" } },
+        "options": { "skipOnConflict": true } },
+      "id": "pg-btc-001", "name": "Insert BTCUSDT", "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [600, 80],
+      "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } } },
+
+    { "parameters": { "method": "GET", "url": "https://api.binance.com/api/v3/klines", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "symbol", "value": "ETHUSDT" }, { "name": "interval", "value": "1m" }, { "name": "limit", "value": "1" } ] }, "options": {} },
+      "id": "http-eth-001", "name": "HTTP Request ETHUSDT", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [120, 300],
+      "retryOnFail": true, "maxTries": 3, "waitBetweenTries": 2000 },
+    { "parameters": { "jsCode": "const raw = $input.first().json;\nconst k = raw[0];\nreturn [{\n  json: {\n    symbol: \"ETHUSDT\",\n    timeframe: \"1m\",\n    open_time: new Date(k[0]).toISOString(),\n    open: parseFloat(k[1]),\n    high: parseFloat(k[2]),\n    low: parseFloat(k[3]),\n    close: parseFloat(k[4]),\n    volume: parseFloat(k[5]),\n    source: \"binance\"\n  }\n}];" },
+      "id": "code-eth-001", "name": "Parse ETHUSDT", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [360, 300] },
+    { "parameters": { "operation": "insert", "schema": { "value": "public" }, "table": { "value": "market_prices" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "symbol": "={{$json.symbol}}", "timeframe": "={{$json.timeframe}}", "open_time": "={{$json.open_time}}",
+          "open": "={{$json.open}}", "high": "={{$json.high}}", "low": "={{$json.low}}", "close": "={{$json.close}}",
+          "volume": "={{$json.volume}}", "source": "={{$json.source}}" } },
+        "options": { "skipOnConflict": true } },
+      "id": "pg-eth-001", "name": "Insert ETHUSDT", "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [600, 300],
+      "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } } },
+
+    { "parameters": { "method": "GET", "url": "https://api.binance.com/api/v3/klines", "sendQuery": true, "queryParameters": { "parameters": [ { "name": "symbol", "value": "SOLUSDT" }, { "name": "interval", "value": "1m" }, { "name": "limit", "value": "1" } ] }, "options": {} },
+      "id": "http-sol-001", "name": "HTTP Request SOLUSDT", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [120, 520],
+      "retryOnFail": true, "maxTries": 3, "waitBetweenTries": 2000 },
+    { "parameters": { "jsCode": "const raw = $input.first().json;\nconst k = raw[0];\nreturn [{\n  json: {\n    symbol: \"SOLUSDT\",\n    timeframe: \"1m\",\n    open_time: new Date(k[0]).toISOString(),\n    open: parseFloat(k[1]),\n    high: parseFloat(k[2]),\n    low: parseFloat(k[3]),\n    close: parseFloat(k[4]),\n    volume: parseFloat(k[5]),\n    source: \"binance\"\n  }\n}];" },
+      "id": "code-sol-001", "name": "Parse SOLUSDT", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [360, 520] },
+    { "parameters": { "operation": "insert", "schema": { "value": "public" }, "table": { "value": "market_prices" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "symbol": "={{$json.symbol}}", "timeframe": "={{$json.timeframe}}", "open_time": "={{$json.open_time}}",
+          "open": "={{$json.open}}", "high": "={{$json.high}}", "low": "={{$json.low}}", "close": "={{$json.close}}",
+          "volume": "={{$json.volume}}", "source": "={{$json.source}}" } },
+        "options": { "skipOnConflict": true } },
+      "id": "pg-sol-001", "name": "Insert SOLUSDT", "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [600, 520],
+      "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } } },
+
+    {
+      "parameters": { "mode": "combine", "combinationMode": "multiplex" },
+      "id": "merge-001", "name": "Merge Branches", "type": "n8n-nodes-base.merge", "typeVersion": 3, "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Xây kết quả cuối theo Data Contract (docs/workflows/workflow-data-contract.md)\nconst items = $input.all();\nconst hasError = items.some(i => i.json && i.json.error);\nconst meta = $('Set Workflow Meta').first().json;\nreturn [{\n  json: {\n    workflow_id: meta.workflow_id,\n    version: meta.version,\n    status: hasError ? \"partial_error\" : \"success\",\n    timestamp: new Date().toISOString(),\n    data: items.map(i => i.json)\n  }\n}];"
+      },
+      "id": "code-response-001", "name": "Build Data Contract Response", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert", "schema": { "value": "public" }, "table": { "value": "workflow_logs" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "workflow_id": "={{$json.workflow_id}}",
+          "execution_id": "={{$execution.id}}",
+          "status": "={{$json.status}}",
+          "duration_ms": "={{Date.now() - new Date($('Set Workflow Meta').first().json.started_at).getTime()}}",
+          "retry_count": 0,
+          "error_message": "={{$json.status === 'success' ? null : JSON.stringify($json.data.filter(d => d.error))}}"
+        } }
+      },
+      "id": "pg-log-001", "name": "Insert Workflow Log", "type": "n8n-nodes-base.postgres", "typeVersion": 2.5, "position": [1320, 300],
+      "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Set Workflow Meta", "type": "main", "index": 0 }]] },
+    "Set Workflow Meta": { "main": [[
+      { "node": "HTTP Request BTCUSDT", "type": "main", "index": 0 },
+      { "node": "HTTP Request ETHUSDT", "type": "main", "index": 0 },
+      { "node": "HTTP Request SOLUSDT", "type": "main", "index": 0 }
+    ]] },
+
+    "HTTP Request BTCUSDT": { "main": [[{ "node": "Parse BTCUSDT", "type": "main", "index": 0 }]] },
+    "Parse BTCUSDT": { "main": [[{ "node": "Insert BTCUSDT", "type": "main", "index": 0 }]] },
+    "Insert BTCUSDT": { "main": [[{ "node": "Merge Branches", "type": "main", "index": 0 }]] },
+
+    "HTTP Request ETHUSDT": { "main": [[{ "node": "Parse ETHUSDT", "type": "main", "index": 0 }]] },
+    "Parse ETHUSDT": { "main": [[{ "node": "Insert ETHUSDT", "type": "main", "index": 0 }]] },
+    "Insert ETHUSDT": { "main": [[{ "node": "Merge Branches", "type": "main", "index": 1 }]] },
+
+    "HTTP Request SOLUSDT": { "main": [[{ "node": "Parse SOLUSDT", "type": "main", "index": 0 }]] },
+    "Parse SOLUSDT": { "main": [[{ "node": "Insert SOLUSDT", "type": "main", "index": 0 }]] },
+    "Insert SOLUSDT": { "main": [[{ "node": "Merge Branches", "type": "main", "index": 2 }]] },
+
+    "Merge Branches": { "main": [[{ "node": "Build Data Contract Response", "type": "main", "index": 0 }]] },
+    "Build Data Contract Response": { "main": [[{ "node": "Insert Workflow Log", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
