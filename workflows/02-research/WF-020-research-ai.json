@@ -1,0 +1,112 @@
+{
+  "name": "WF-020-research-ai",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 15 }] } },
+      "id": "sch-001", "name": "Schedule Trigger", "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2, "position": [-600, 300]
+    },
+    {
+      "parameters": {
+        "assignments": { "assignments": [
+          { "id": "a1", "name": "workflow_id", "value": "WF-020", "type": "string" },
+          { "id": "a2", "name": "version", "value": "v1.0", "type": "string" },
+          { "id": "a3", "name": "started_at", "value": "={{$now.toISO()}}", "type": "string" }
+        ] }
+      },
+      "id": "set-001", "name": "Set Workflow Meta", "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4, "position": [-380, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol, open_time, close FROM market_prices WHERE created_at > NOW() - INTERVAL '2 hours' ORDER BY symbol, open_time ASC;"
+      },
+      "id": "pg-001", "name": "Get Recent Prices", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [-160, 300],
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst bySymbol = {};\nfor (const r of rows) {\n  if (!bySymbol[r.symbol]) bySymbol[r.symbol] = [];\n  bySymbol[r.symbol].push(r);\n}\nconst summaries = [];\nconst lastPrices = {};\nfor (const symbol in bySymbol) {\n  const arr = bySymbol[symbol].sort((a,b) => new Date(a.open_time) - new Date(b.open_time));\n  const first = parseFloat(arr[0].close);\n  const last = parseFloat(arr[arr.length-1].close);\n  const changePct = (((last - first) / first) * 100).toFixed(2);\n  summaries.push(`${symbol}: gia dau ${first}, gia hien tai ${last}, thay doi ${changePct}%`);\n  lastPrices[symbol] = last;\n}\nconst symbolList = Object.keys(bySymbol);\nconst prompt = `Ban la AI phan tich thi truong crypto ngan han. Du lieu 2 gio gan nhat:\\n${summaries.join('\\n')}\\n\\nTra loi DUY NHAT mot JSON array, khong them chu nao khac, dung format:\\n[{\"symbol\": \"BTCUSDT\", \"signal\": \"BUY|SELL|HOLD\", \"reason\": \"giai thich ngan gon 1 cau\"}]\\n\\nPhai co du 1 object cho moi symbol: ${symbolList.join(', ')}`;\nreturn [{ json: { prompt, last_prices: lastPrices, symbol_list: symbolList } }];"
+      },
+      "id": "code-001", "name": "Build Prompt", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [60, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"qwen2.5:3b\", prompt: $json.prompt, stream: false, format: \"json\" } }}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "http-001", "name": "Call Qwen (Ollama)", "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2, "position": [280, 300],
+      "retryOnFail": true, "maxTries": 3, "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst lastPrices = $('Build Prompt').first().json.last_prices;\nconst symbolList = $('Build Prompt').first().json.symbol_list;\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.response);\n} catch (e) {\n  parsed = [];\n}\nif (!Array.isArray(parsed) || parsed.length === 0) {\n  parsed = symbolList.map(symbol => ({ symbol, signal: \"HOLD\", reason: \"parse_error: AI khong tra ve JSON hop le\" }));\n}\nreturn parsed.map(p => ({\n  json: {\n    symbol: p.symbol,\n    signal: (p.signal || \"HOLD\").toUpperCase(),\n    reason: p.reason || \"\",\n    price_at_signal: lastPrices[p.symbol] || null\n  }\n}));"
+      },
+      "id": "code-002", "name": "Parse AI Response", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": { "mode": "list", "value": "public" },
+        "table": { "mode": "list", "value": "signals" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "symbol": "={{$json.symbol}}",
+          "signal": "={{$json.signal}}",
+          "reason": "={{$json.reason}}",
+          "price_at_signal": "{{$json.price_at_signal}}",
+          "model": "=qwen2.5:3b"
+        } }
+      },
+      "id": "pg-002", "name": "Insert Signals", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [720, 300], "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst hasError = items.some(i => i.json && i.json.error);\nconst meta = $('Set Workflow Meta').first().json;\nreturn [{\n  json: {\n    workflow_id: meta.workflow_id,\n    version: meta.version,\n    status: hasError ? \"partial_error\" : \"success\",\n    timestamp: new Date().toISOString(),\n    data: items.map(i => i.json)\n  }\n}];"
+      },
+      "id": "code-003", "name": "Build Data Contract Response", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": { "mode": "list", "value": "public" },
+        "table": { "mode": "list", "value": "workflow_logs" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "workflow_id": "={{$json.workflow_id}}",
+          "execution_id": "={{$execution.id}}",
+          "status": "={{$json.status}}",
+          "duration_ms": "{{Date.now() - new Date($('Set Workflow Meta').first().json.started_at).getTime()}}",
+          "retry_count": "=0",
+          "error_message": "={{$json.status === 'success' ? null : JSON.stringify($json.data.filter(d => d.error))}}"
+        } }
+      },
+      "id": "pg-003", "name": "Insert Workflow Log", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [1160, 300], "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Set Workflow Meta", "type": "main", "index": 0 }]] },
+    "Set Workflow Meta": { "main": [[{ "node": "Get Recent Prices", "type": "main", "index": 0 }]] },
+    "Get Recent Prices": { "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]] },
+    "Build Prompt": { "main": [[{ "node": "Call Qwen (Ollama)", "type": "main", "index": 0 }]] },
+    "Call Qwen (Ollama)": { "main": [[{ "node": "Parse AI Response", "type": "main", "index": 0 }]] },
+    "Parse AI Response": { "main": [[{ "node": "Insert Signals", "type": "main", "index": 0 }]] },
+    "Insert Signals": { "main": [[{ "node": "Build Data Contract Response", "type": "main", "index": 0 }]] },
+    "Build Data Contract Response": { "main": [[{ "node": "Insert Workflow Log", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
