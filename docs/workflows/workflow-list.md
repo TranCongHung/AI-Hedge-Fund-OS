@@ -2,6 +2,7 @@
 | Workflow | Name | Module | Trigger | Status |
 |-----------|------|---------|----------|--------|
 | WF-001 | Binance Collector | Collector | Schedule | ✅ Active |
+| WF-001b | Historical Batch Collector | Collector | Manual | ✅ Active |
 | WF-002 | CoinGecko Collector | Collector | Schedule | 🟡 Planned |
 | WF-003 | RSS Collector | Collector | Schedule | 🟡 Planned |
 | WF-010 | FRED Collector | Macro | Daily | 🟡 Planned |
