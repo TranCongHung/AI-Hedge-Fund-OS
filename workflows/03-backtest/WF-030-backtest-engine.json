@@ -1,0 +1,207 @@
+{
+  "name": "WF-030-backtest-engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol, timeframe, open_time, open, high, low, close FROM market_prices WHERE timeframe = '4h' ORDER BY symbol, open_time ASC;"
+      },
+      "id": "pg-001",
+      "name": "Get 4h Candles",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -480,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).map(r => ({\n  ...r,\n  open: parseFloat(r.open),\n  high: parseFloat(r.high),\n  low: parseFloat(r.low),\n  close: parseFloat(r.close),\n  open_time: new Date(r.open_time)\n})).sort((a, b) => a.open_time - b.open_time);\n\nconst symbols = [...new Set(rows.map(r => r.symbol))];\nconst allTrades = [];\n\nfunction ema(values, period) {\n  const k = 2 / (period + 1);\n  const out = [];\n  let prev = null;\n  for (let i = 0; i < values.length; i++) {\n    if (i < period - 1) { out.push(null); continue; }\n    if (prev === null) {\n      const seed = values.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;\n      prev = seed; out.push(seed); continue;\n    }\n    prev = values[i] * k + prev * (1 - k);\n    out.push(prev);\n  }\n  return out;\n}\n\nfunction atr(candles, period) {\n  const trs = [];\n  for (let i = 0; i < candles.length; i++) {\n    if (i === 0) { trs.push(candles[i].high - candles[i].low); continue; }\n    const prevClose = candles[i - 1].close;\n    const tr = Math.max(\n      candles[i].high - candles[i].low,\n      Math.abs(candles[i].high - prevClose),\n      Math.abs(candles[i].low - prevClose)\n    );\n    trs.push(tr);\n  }\n  const out = [];\n  for (let i = 0; i < trs.length; i++) {\n    if (i < period - 1) { out.push(null); continue; }\n    const avg = trs.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;\n    out.push(avg);\n  }\n  return out;\n}\n\nfunction swingLow(candles, idx, lookback) {\n  const start = Math.max(0, idx - lookback);\n  const slice = candles.slice(start, idx + 1);\n  return Math.min(...slice.map(c => c.low));\n}\nfunction swingHigh(candles, idx, lookback) {\n  const start = Math.max(0, idx - lookback);\n  const slice = candles.slice(start, idx + 1);\n  return Math.max(...slice.map(c => c.high));\n}\n\nfor (const symbol of symbols) {\n  const candles = rows.filter(r => r.symbol === symbol);\n  if (candles.length < 30) continue;\n\n  const closes = candles.map(c => c.close);\n  const ema9 = ema(closes, 9);\n  const ema21 = ema(closes, 21);\n  const atr14 = atr(candles, 14);\n\n  let position = null; // { direction, entry_price, sl1, sl2, tp1, tp2, entry_time, entry_idx }\n\n  for (let i = 22; i < candles.length; i++) {\n    const c = candles[i];\n\n    // Neu dang co lenh mo, kiem tra co cham TP/SL chua\n    if (position) {\n      const hitTP2 = position.direction === 'BUY' ? c.high >= position.tp2 : c.low <= position.tp2;\n      const hitTP1 = position.direction === 'BUY' ? c.high >= position.tp1 : c.low <= position.tp1;\n      const hitSL1 = position.direction === 'BUY' ? c.low <= position.sl1 : c.high >= position.sl1;\n      const hitSL2 = position.direction === 'BUY' ? c.low <= position.sl2 : c.high >= position.sl2;\n\n      let outcome = null, exitPrice = null;\n      if (hitSL2) { outcome = 'SL2_HIT'; exitPrice = position.sl2; }\n      else if (hitSL1) { outcome = 'SL1_HIT'; exitPrice = position.sl1; }\n      else if (hitTP2) { outcome = 'TP2_HIT'; exitPrice = position.tp2; }\n      else if (hitTP1) { outcome = 'TP1_HIT'; exitPrice = position.tp1; }\n\n      if (outcome) {\n        const risk = Math.abs(position.entry_price - position.sl1);\n        const reward = position.direction === 'BUY'\n          ? (exitPrice - position.entry_price)\n          : (position.entry_price - exitPrice);\n        const rr = risk > 0 ? (reward / risk) : 0;\n        allTrades.push({\n          symbol, timeframe: candles[0].timeframe, direction: position.direction,\n          entry_time: position.entry_time.toISOString(), entry_price: position.entry_price,\n          sl1: position.sl1, sl2: position.sl2, tp1: position.tp1, tp2: position.tp2,\n          outcome, exit_time: c.open_time.toISOString(), exit_price: exitPrice, rr_achieved: rr\n        });\n        position = null;\n      }\n      continue; // dang co lenh, khong mo lenh moi cung luc\n    }\n\n    // Kiem tra tin hieu giao cat EMA de mo lenh moi\n    if (ema9[i - 1] === null || ema21[i - 1] === null || ema9[i] === null || ema21[i] === null || atr14[i] === null) continue;\n\n    const crossUp = ema9[i - 1] <= ema21[i - 1] && ema9[i] > ema21[i];\n    const crossDown = ema9[i - 1] >= ema21[i - 1] && ema9[i] < ema21[i];\n\n    if (crossUp) {\n      const entry = c.close;\n      const sr = swingLow(candles, i, 20);\n      const sl1 = sr - atr14[i];\n      const sl2 = sr - atr14[i] * 1.5;\n      const risk = entry - sl1;\n      position = {\n        direction: 'BUY', entry_price: entry, entry_time: c.open_time,\n        sl1, sl2, tp1: entry + risk * 1, tp2: entry + risk * 2\n      };\n    } else if (crossDown) {\n      const entry = c.close;\n      const sr = swingHigh(candles, i, 20);\n      const sl1 = sr + atr14[i];\n      const sl2 = sr + atr14[i] * 1.5;\n      const risk = sl1 - entry;\n      position = {\n        direction: 'SELL', entry_price: entry, entry_time: c.open_time,\n        sl1, sl2, tp1: entry - risk * 1, tp2: entry - risk * 2\n      };\n    }\n  }\n  // Lenh con mo cuoi giai doan backtest thi bo qua (khong tinh vao thang/thua)\n}\n\nreturn allTrades.map(t => ({ json: t }));"
+      },
+      "id": "code-001",
+      "name": "Run Backtest (EMA Cross + ATR SR)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "backtest_trades"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "timeframe": "={{$json.timeframe}}",
+            "direction": "={{$json.direction}}",
+            "entry_time": "{{$json.entry_time}}",
+            "entry_price": "{{$json.entry_price}}",
+            "sl1": "{{$json.sl1}}",
+            "sl2": "{{$json.sl2}}",
+            "tp1": "{{$json.tp1}}",
+            "tp2": "{{$json.tp2}}",
+            "outcome": "={{$json.outcome}}",
+            "exit_time": "{{$json.exit_time}}",
+            "exit_price": "{{$json.exit_price}}",
+            "rr_achieved": "{{$json.rr_achieved}}"
+          }
+        }
+      },
+      "id": "pg-002",
+      "name": "Insert Backtest Trades",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        40,
+        200
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const trades = $input.all().map(i => i.json);\nconst symbols = [...new Set(trades.map(t => t.symbol))];\nconst summaries = [];\n\nfor (const symbol of symbols) {\n  const sTrades = trades.filter(t => t.symbol === symbol);\n  const wins = sTrades.filter(t => t.outcome === 'TP1_HIT' || t.outcome === 'TP2_HIT').length;\n  const losses = sTrades.filter(t => t.outcome === 'SL1_HIT' || t.outcome === 'SL2_HIT').length;\n  const total = sTrades.length;\n  const avgRR = total > 0 ? (sTrades.reduce((a, t) => a + (t.rr_achieved || 0), 0) / total) : 0;\n  const times = sTrades.map(t => new Date(t.entry_time).getTime());\n  summaries.push({\n    symbol,\n    timeframe: sTrades[0] ? sTrades[0].timeframe : null,\n    total_trades: total,\n    wins, losses, open_trades: 0,\n    win_rate_pct: total > 0 ? ((wins / total) * 100) : 0,\n    avg_rr_achieved: avgRR,\n    period_start: times.length ? new Date(Math.min(...times)).toISOString() : null,\n    period_end: times.length ? new Date(Math.max(...times)).toISOString() : null\n  });\n}\n\nreturn summaries.map(s => ({ json: s }));"
+      },
+      "id": "code-002",
+      "name": "Aggregate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "backtest_summary"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "timeframe": "={{$json.timeframe}}",
+            "total_trades": "{{$json.total_trades}}",
+            "wins": "{{$json.wins}}",
+            "losses": "{{$json.losses}}",
+            "open_trades": "{{$json.open_trades}}",
+            "win_rate_pct": "{{$json.win_rate_pct}}",
+            "avg_rr_achieved": "{{$json.avg_rr_achieved}}",
+            "period_start": "{{$json.period_start}}",
+            "period_end": "{{$json.period_end}}"
+          }
+        }
+      },
+      "id": "pg-003",
+      "name": "Insert Backtest Summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        280,
+        420
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get 4h Candles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get 4h Candles": {
+      "main": [
+        [
+          {
+            "node": "Run Backtest (EMA Cross + ATR SR)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Backtest (EMA Cross + ATR SR)": {
+      "main": [
+        [
+          {
+            "node": "Insert Backtest Trades",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Summary": {
+      "main": [
+        [
+          {
+            "node": "Insert Backtest Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

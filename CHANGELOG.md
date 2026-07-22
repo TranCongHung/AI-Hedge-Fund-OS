@@ -1,3 +1,14 @@
+# Changelog
+
+## v0.6.0
+
+### Added
+- WF-030 Backtest Engine: tính Entry/SL1/SL2/TP1/TP2 dựa trên giao cắt EMA9/EMA21 + ATR + hỗ trợ/kháng cự, mô phỏng lịch sử để tính tỷ lệ thắng/thua thật.
+- Bảng backtest_trades, backtest_summary.
+
+### Note
+- Kết quả backtest hiện dựa trên mẫu nhỏ (~1 tháng dữ liệu, vài lệnh/coin) — chưa đủ ý nghĩa thống kê, cần tích luỹ thêm dữ liệu qua nhiều lần chạy WF-001b để đáng tin cậy hơn.
+
 ## v0.5.0
 
 ### Fixed
@@ -5,7 +16,7 @@
 
 ### Changed
 - WF-020 nâng cấp lên v2.0: phân tích đa khung thời gian (1h/4h/1d) thay vì chỉ 2 giờ gần nhất, cho tín hiệu chính xác hơn nhiều.
-# Changelog
+
 ## v0.4.0
 
 ### Added
