@@ -6,7 +6,7 @@
 | WF-002 | CoinGecko Collector | Collector | Schedule | 🟡 Planned |
 | WF-003 | RSS Collector | Collector | Schedule | 🟡 Planned |
 | WF-010 | FRED Collector | Macro | Daily | 🟡 Planned |
-| WF-020 | Research AI | Research | Internal | ✅ Active |
+| WF-020 | Research AI (v2, da khung thoi gian) | Research | Schedule | ✅ Active |
 | WF-030 | Technical AI | Technical | Internal | 🟡 Planned |
 | WF-040 | On-chain AI | On-chain | Internal | 🟡 Planned |
 | WF-050 | Risk AI | Risk | Internal | 🟡 Planned |
