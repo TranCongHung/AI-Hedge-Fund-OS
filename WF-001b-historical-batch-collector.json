@@ -1,0 +1,84 @@
+{
+  "name": "WF-001b-historical-batch-collector",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001", "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1, "position": [-500, 300]
+    },
+    {
+      "parameters": {
+        "assignments": { "assignments": [
+          { "id": "a1", "name": "workflow_id", "value": "WF-001b", "type": "string" },
+          { "id": "a2", "name": "started_at", "value": "={{$now.toISO()}}", "type": "string" }
+        ] }
+      },
+      "id": "set-001", "name": "Set Workflow Meta", "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4, "position": [-300, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Danh sach symbol va khung nen can lay, moi combo lay dung ~1 thang gan nhat\nconst symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];\nconst intervals = [\n  { interval: '1h', limit: 720, timeframe: '1h' },\n  { interval: '4h', limit: 180, timeframe: '4h' },\n  { interval: '1d', limit: 31,  timeframe: '1d' }\n];\n\nconst allRows = [];\n\nfor (const symbol of symbols) {\n  for (const cfg of intervals) {\n    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${cfg.interval}&limit=${cfg.limit}`;\n    let candles;\n    try {\n      const res = await fetch(url);\n      candles = await res.json();\n    } catch (e) {\n      allRows.push({ json: { error: true, symbol, timeframe: cfg.timeframe, message: e.message } });\n      continue;\n    }\n    if (!Array.isArray(candles)) {\n      allRows.push({ json: { error: true, symbol, timeframe: cfg.timeframe, message: JSON.stringify(candles) } });\n      continue;\n    }\n    for (const k of candles) {\n      allRows.push({\n        json: {\n          symbol,\n          timeframe: cfg.timeframe,\n          open_time: new Date(k[0]).toISOString(),\n          open: parseFloat(k[1]),\n          high: parseFloat(k[2]),\n          low: parseFloat(k[3]),\n          close: parseFloat(k[4]),\n          volume: parseFloat(k[5]),\n          source: 'binance'\n        }\n      });\n    }\n  }\n}\n\nreturn allRows;"
+      },
+      "id": "code-001", "name": "Fetch Historical Candles", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [-80, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": { "mode": "list", "value": "public" },
+        "table": { "mode": "list", "value": "market_prices" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "symbol": "={{$json.symbol}}",
+          "timeframe": "={{$json.timeframe}}",
+          "open_time": "{{$json.open_time}}",
+          "open": "{{$json.open}}",
+          "high": "{{$json.high}}",
+          "low": "{{$json.low}}",
+          "close": "{{$json.close}}",
+          "volume": "{{$json.volume}}",
+          "source": "={{$json.source}}"
+        } },
+        "options": { "skipOnConflict": true }
+      },
+      "id": "pg-001", "name": "Insert Historical Prices", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [140, 300], "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst errorItems = items.filter(i => i.json && i.json.error);\nconst meta = $('Set Workflow Meta').first().json;\nreturn [{\n  json: {\n    workflow_id: meta.workflow_id,\n    status: errorItems.length > 0 ? \"partial_error\" : \"success\",\n    total_rows: items.length,\n    error_count: errorItems.length,\n    started_at: meta.started_at\n  }\n}];"
+      },
+      "id": "code-002", "name": "Summarize Result", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": { "mode": "list", "value": "public" },
+        "table": { "mode": "list", "value": "workflow_logs" },
+        "columns": { "mappingMode": "defineBelow", "value": {
+          "workflow_id": "={{$json.workflow_id}}",
+          "execution_id": "={{$execution.id}}",
+          "status": "={{$json.status}}",
+          "duration_ms": "{{Date.now() - new Date($json.started_at).getTime()}}",
+          "retry_count": "=0",
+          "error_message": "={{$json.error_count > 0 ? ($json.error_count + ' loi trong tong ' + $json.total_rows + ' dong') : null}}"
+        } }
+      },
+      "id": "pg-002", "name": "Insert Workflow Log", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [580, 300], "continueOnFail": true,
+      "credentials": { "postgres": { "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID", "name": "AIQRP Postgres" } }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Set Workflow Meta", "type": "main", "index": 0 }]] },
+    "Set Workflow Meta": { "main": [[{ "node": "Fetch Historical Candles", "type": "main", "index": 0 }]] },
+    "Fetch Historical Candles": { "main": [[{ "node": "Insert Historical Prices", "type": "main", "index": 0 }]] },
+    "Insert Historical Prices": { "main": [[{ "node": "Summarize Result", "type": "main", "index": 0 }]] },
+    "Summarize Result": { "main": [[{ "node": "Insert Workflow Log", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
