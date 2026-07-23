@@ -1,5 +1,12 @@
 # Changelog
+## v0.7.0
 
+### Added
+- WF-005 Market Screener: quét top 50 coin theo thanh khoản trên Binance, tính điểm setup (giao cắt EMA + ATR + xu hướng + khối lượng), tự động chọn ra 10 coin tốt nhất vào bảng watchlist.
+- Bảng screener_raw_scores, watchlist.
+
+### Note
+- Cần lưu ý selection bias: watchlist chọn theo setup hiện tại, không nên backtest ngay trên chính giai đoạn dữ liệu đã dùng để chọn coin (kết quả sẽ bị ảo quan).
 ## v0.6.0
 
 ### Added

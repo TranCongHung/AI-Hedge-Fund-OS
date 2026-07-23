@@ -5,6 +5,7 @@
 | WF-001b | Historical Batch Collector | Collector | Manual | ✅ Active |
 | WF-002 | CoinGecko Collector | Collector | Schedule | 🟡 Planned |
 | WF-003 | RSS Collector | Collector | Schedule | 🟡 Planned |
+| WF-005 | Market Screener (Top 50 -> Top 10) | Screener | Manual | ✅ Active |
 | WF-010 | FRED Collector | Macro | Daily | 🟡 Planned |
 | WF-020 | Research AI (v2, da khung thoi gian) | Research | Schedule | ✅ Active |
 | WF-030 | Backtest Engine (EMA Cross + ATR/SR) | Backtest | Manual | ✅ Active |

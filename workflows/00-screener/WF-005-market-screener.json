@@ -1,0 +1,373 @@
+{
+  "name": "WF-005-market-screener",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM screener_raw_scores;"
+      },
+      "id": "pg-clear-001",
+      "name": "Clear Raw Scores",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1000,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.binance.com/api/v3/ticker/24hr",
+        "options": {}
+      },
+      "id": "http-ticker-001",
+      "name": "Get All Tickers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -800,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\n\n// Loc cap USDT, bo stablecoin va leveraged token (khong phai tai san thuong)\nconst EXCLUDE = ['USDCUSDT','FDUSDUSDT','BUSDUSDT','TUSDUSDT','DAIUSDT','USDPUSDT','EURUSDT','USD1USDT'];\nconst filtered = items.filter(t => {\n  if (!t.symbol || !t.symbol.endsWith('USDT')) return false;\n  if (EXCLUDE.includes(t.symbol)) return false;\n  if (/UP USDT|DOWN USDT/.test(t.symbol)) return false;\n  if (t.symbol.includes('UPUSDT') || t.symbol.includes('DOWNUSDT') || t.symbol.includes('BULLUSDT') || t.symbol.includes('BEARUSDT')) return false;\n  return true;\n});\n\nfiltered.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));\nconst top100 = filtered.slice(0, 100).map(t => ({ symbol: t.symbol }));\n\nreturn top100.map(t => ({ json: t }));"
+      },
+      "id": "code-filter-001",
+      "name": "Filter Top 100 by Volume",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-001",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -380,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.binance.com/api/v3/klines",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{$json.symbol}}"
+            },
+            {
+              "name": "interval",
+              "value": "4h"
+            },
+            {
+              "name": "limit",
+              "value": "60"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-klines-001",
+      "name": "Get Klines (per symbol)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "jsCode": "const symbol = $('Loop Over Items').first().json.symbol;\nconst candlesRaw = $input.all().map(i => i.json);\n\nif (!Array.isArray(candlesRaw) || candlesRaw.length < 25 || !Array.isArray(candlesRaw[0])) {\n  return [{ json: { symbol, score: 0, candles_since_cross: null, cross_direction: null, atr_pct: 0, trend_pct: 0, volume_ratio: 0 } }];\n}\n\nconst candles = candlesRaw.map(k => ({\n  time: k[0], open: parseFloat(k[1]), high: parseFloat(k[2]),\n  low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5])\n}));\n\nfunction ema(values, period) {\n  const k = 2 / (period + 1);\n  const out = [];\n  let prev = null;\n  for (let i = 0; i < values.length; i++) {\n    if (i < period - 1) { out.push(null); continue; }\n    if (prev === null) {\n      const seed = values.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;\n      prev = seed; out.push(seed); continue;\n    }\n    prev = values[i] * k + prev * (1 - k);\n    out.push(prev);\n  }\n  return out;\n}\n\nfunction atr(cs, period) {\n  const trs = [];\n  for (let i = 0; i < cs.length; i++) {\n    if (i === 0) { trs.push(cs[i].high - cs[i].low); continue; }\n    const pc = cs[i - 1].close;\n    trs.push(Math.max(cs[i].high - cs[i].low, Math.abs(cs[i].high - pc), Math.abs(cs[i].low - pc)));\n  }\n  const out = [];\n  for (let i = 0; i < trs.length; i++) {\n    if (i < period - 1) { out.push(null); continue; }\n    out.push(trs.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period);\n  }\n  return out;\n}\n\nconst closes = candles.map(c => c.close);\nconst ema9 = ema(closes, 9);\nconst ema21 = ema(closes, 21);\nconst atr14 = atr(candles, 14);\n\nconst n = candles.length;\nconst lookback = Math.min(15, n - 22);\nlet candlesSinceCross = null;\nlet crossDirection = null;\n\nfor (let back = 0; back < lookback; back++) {\n  const i = n - 1 - back;\n  if (i < 1 || ema9[i] === null || ema21[i] === null || ema9[i - 1] === null || ema21[i - 1] === null) continue;\n  const crossUp = ema9[i - 1] <= ema21[i - 1] && ema9[i] > ema21[i];\n  const crossDown = ema9[i - 1] >= ema21[i - 1] && ema9[i] < ema21[i];\n  if (crossUp || crossDown) {\n    candlesSinceCross = back;\n    crossDirection = crossUp ? 'BUY' : 'SELL';\n    break;\n  }\n}\n\nconst lastIdx = n - 1;\nconst trendLookback = Math.min(20, n - 1);\nconst trendPct = ((closes[lastIdx] - closes[lastIdx - trendLookback]) / closes[lastIdx - trendLookback]) * 100;\n\nconst lastATR = atr14[lastIdx] || 0;\nconst atrPct = lastATR > 0 ? (lastATR / closes[lastIdx]) * 100 : 0;\n\nconst volLookback = Math.min(20, n - 2);\nconst avgVolume = candles.slice(lastIdx - volLookback, lastIdx).reduce((a, c) => a + c.volume, 0) / volLookback;\nconst volumeRatio = avgVolume > 0 ? (candles[lastIdx].volume / avgVolume) : 0;\n\nlet crossScore = 0;\nif (candlesSinceCross !== null) crossScore = Math.max(0, (6 - candlesSinceCross)) / 6 * 40;\n\nconst trendScore = Math.min(Math.abs(trendPct) / 8, 1) * 30;\n\nlet atrScore = 0;\nif (atrPct >= 1 && atrPct <= 6) atrScore = 15;\nelse if (atrPct > 0) atrScore = Math.max(0, 15 - Math.abs(atrPct - 3.5) * 3);\n\nconst volumeScore = Math.min(volumeRatio, 2) / 2 * 15;\n\nconst totalScore = crossScore + trendScore + atrScore + volumeScore;\n\nreturn [{ json: {\n  symbol,\n  score: Math.round(totalScore * 100) / 100,\n  candles_since_cross: candlesSinceCross,\n  cross_direction: crossDirection,\n  atr_pct: Math.round(atrPct * 100) / 100,\n  trend_pct: Math.round(trendPct * 100) / 100,\n  volume_ratio: Math.round(volumeRatio * 100) / 100\n} }];"
+      },
+      "id": "code-score-001",
+      "name": "Compute Setup Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        60,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "screener_raw_scores"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "score": "{{$json.score}}",
+            "candles_since_cross": "{{$json.candles_since_cross}}",
+            "cross_direction": "={{$json.cross_direction}}",
+            "atr_pct": "{{$json.atr_pct}}",
+            "trend_pct": "{{$json.trend_pct}}",
+            "volume_ratio": "{{$json.volume_ratio}}"
+          }
+        }
+      },
+      "id": "pg-insert-score-001",
+      "name": "Insert Score",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        280,
+        200
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE watchlist SET active = false, updated_at = NOW();"
+      },
+      "id": "pg-inactive-001",
+      "name": "Mark All Watchlist Inactive",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -160,
+        460
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol, score, cross_direction FROM screener_raw_scores WHERE score > 0 ORDER BY score DESC LIMIT 10;"
+      },
+      "id": "pg-top10-001",
+      "name": "Get Top 10 Scores",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        60,
+        460
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "watchlist"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "score": "{{$json.score}}",
+            "cross_direction": "={{$json.cross_direction}}",
+            "active": "={{true}}",
+            "updated_at": "={{$now.toISO()}}"
+          },
+          "matchingColumns": [
+            "symbol"
+          ]
+        }
+      },
+      "id": "pg-upsert-001",
+      "name": "Upsert Watchlist Top 10",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        280,
+        460
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Clear Raw Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Raw Scores": {
+      "main": [
+        [
+          {
+            "node": "Get All Tickers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Tickers": {
+      "main": [
+        [
+          {
+            "node": "Filter Top 100 by Volume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Top 100 by Volume": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Mark All Watchlist Inactive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Klines (per symbol)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Klines (per symbol)": {
+      "main": [
+        [
+          {
+            "node": "Compute Setup Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Setup Score": {
+      "main": [
+        [
+          {
+            "node": "Insert Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Score": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark All Watchlist Inactive": {
+      "main": [
+        [
+          {
+            "node": "Get Top 10 Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Top 10 Scores": {
+      "main": [
+        [
+          {
+            "node": "Upsert Watchlist Top 10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
