@@ -12,6 +12,6 @@
 | WF-040 | On-chain AI | On-chain | Internal | 🟡 Planned |
 | WF-050 | Risk AI | Risk | Internal | 🟡 Planned |
 | WF-060 | Manager AI | Manager | Internal | 🟡 Planned |
-| WF-070 | AI Chat Assistant (thay Telegram) | Notification | Internal | 🟡 Planned |
+| WF-070 | AI Chat Assistant (Groq API) | Manager | Webhook | ✅ Active |
 | WF-080 | Journal | Journal | Internal | 🟡 Planned |
 | WF-090 | Daily Report | Report | Schedule | 🟡 Planned |

@@ -1,4 +1,12 @@
 # Changelog
+## v0.9.0
+
+### Added
+- WF-070 AI Chat Assistant: chat trực tiếp với trợ lý qua giao diện HTML, kết hợp signals + market_prices, dùng Groq API cho tốc độ phản hồi nhanh (~1 giây).
+- Giao diện chat-assistant.html với avatar cute, animation trạng thái.
+
+### Note
+- Đã thay thế hoàn toàn kế hoạch Telegram Bot (WF-070 gốc) bằng AI Chat Assistant theo quyết định tại Sprint 9.
 ## v0.8.0
 
 ### Added

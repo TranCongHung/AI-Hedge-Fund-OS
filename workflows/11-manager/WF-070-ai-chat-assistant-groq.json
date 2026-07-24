@@ -1,0 +1,321 @@
+{
+  "name": "WF-070-ai-chat-assistant-groq",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-001",
+      "name": "Webhook Chat",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        300
+      ],
+      "webhookId": "ai-chat-001"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "started_at",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-start-001",
+      "name": "Set Started At",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (symbol) symbol, signal, reason, price_at_signal, created_at FROM signals ORDER BY symbol, created_at DESC;"
+      },
+      "id": "pg-001",
+      "name": "Get Latest Signals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -460,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (symbol) symbol, close, open_time FROM market_prices WHERE timeframe = '1h' ORDER BY symbol, open_time DESC;"
+      },
+      "id": "pg-002",
+      "name": "Get Latest Prices",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -460,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $('Webhook Chat').first().json.body.message || \"\";\nconst signals = $('Get Latest Signals').all().map(i => i.json);\nconst prices = $('Get Latest Prices').all().map(i => i.json);\n\nconst priceMap = Object.fromEntries(prices.map(p => [p.symbol, p.close]));\n\nconst dataLines = signals.map(s => {\n  const price = priceMap[s.symbol] || \"khong ro\";\n  return `${s.symbol}: gia hien tai ${price}, tin hieu AI da luu: ${s.signal} (ly do: ${s.reason})`;\n});\n\nconst prompt = `Ban la mot tro ly AI quan ly quy dau tu crypto nho, than thien va de thuong. Duoi day la du lieu moi nhat:\\n${dataLines.join('\\n')}\\n\\nCau hoi cua nguoi dung: \"${message}\"\\n\\nHay tra loi BANG TIENG VIET, ngan gon, de hieu, dua tren du lieu tren. Neu cau hoi khong lien quan den du lieu, van tra loi than thien binh thuong. Khong dung markdown code block.`;\n\nreturn [{ json: { prompt } }];"
+      },
+      "id": "code-001",
+      "name": "Build Context Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "http-001",
+      "name": "Call Groq API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -20,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet reply = \"Xin loi, minh chua nghi ra cau tra loi.\";\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  reply = (raw.choices[0].message.content || reply).trim();\n} else if (raw.error) {\n  reply = \"Loi ket noi AI: \" + JSON.stringify(raw.error);\n}\nreturn [{ json: { reply } }];"
+      },
+      "id": "code-002",
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "workflow_logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow_id": "=WF-070",
+            "execution_id": "={{$execution.id}}",
+            "status": "=success",
+            "duration_ms": "{{Date.now() - new Date($('Set Started At').first().json.started_at).getTime()}}",
+            "retry_count": "=0"
+          }
+        }
+      },
+      "id": "pg-003",
+      "name": "Insert Workflow Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        420,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $('Extract Reply').first().json.reply } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-001",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Chat": {
+      "main": [
+        [
+          {
+            "node": "Set Started At",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Started At": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Signals",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Latest Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Signals": {
+      "main": [
+        [
+          {
+            "node": "Build Context Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Prices": {
+      "main": [
+        [
+          {
+            "node": "Build Context Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API": {
+      "main": [
+        [
+          {
+            "node": "Extract Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reply": {
+      "main": [
+        [
+          {
+            "node": "Insert Workflow Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Workflow Log": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
