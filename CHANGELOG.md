@@ -1,4 +1,16 @@
 # Changelog
+## v0.8.0
+
+### Added
+- WF-001b v2: tự động lấy dữ liệu lịch sử theo danh sách watchlist động (10 coin do Screener chọn), thay vì viết cứng 3 coin.
+- WF-020 v4: chia nhỏ phân tích theo nhóm 5 coin/lần, chuyển từ Qwen local sang Groq API (openai/gpt-oss-20b) — nhanh hơn đáng kể.
+
+### Fixed
+- Đồng bộ file WF-005 trên Git về đúng cấu hình 50 coin (trước đó lệch với bản đang chạy).
+- Dọn dữ liệu parse_error cũ trong bảng signals (do lỗi credential Groq lúc đầu).
+
+### Note
+- Groq free tier: 30 request/phút, ~6.000 token/phút, giới hạn ngày tuỳ model — khối lượng dùng hiện tại của dự án nằm rất xa dưới các mức này.
 ## v0.7.0
 
 ### Added

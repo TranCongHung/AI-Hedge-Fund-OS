@@ -52,7 +52,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all().map(i => i.json);\n\n// Loc cap USDT, bo stablecoin va leveraged token (khong phai tai san thuong)\nconst EXCLUDE = ['USDCUSDT','FDUSDUSDT','BUSDUSDT','TUSDUSDT','DAIUSDT','USDPUSDT','EURUSDT','USD1USDT'];\nconst filtered = items.filter(t => {\n  if (!t.symbol || !t.symbol.endsWith('USDT')) return false;\n  if (EXCLUDE.includes(t.symbol)) return false;\n  if (/UP USDT|DOWN USDT/.test(t.symbol)) return false;\n  if (t.symbol.includes('UPUSDT') || t.symbol.includes('DOWNUSDT') || t.symbol.includes('BULLUSDT') || t.symbol.includes('BEARUSDT')) return false;\n  return true;\n});\n\nfiltered.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));\nconst top100 = filtered.slice(0, 100).map(t => ({ symbol: t.symbol }));\n\nreturn top100.map(t => ({ json: t }));"
+        "jsCode": "const items = $input.all().map(i => i.json);\n\n// Loc cap USDT, bo stablecoin va leveraged token (khong phai tai san thuong)\nconst EXCLUDE = ['USDCUSDT','FDUSDUSDT','BUSDUSDT','TUSDUSDT','DAIUSDT','USDPUSDT','EURUSDT','USD1USDT'];\nconst filtered = items.filter(t => {\n  if (!t.symbol || !t.symbol.endsWith('USDT')) return false;\n  if (EXCLUDE.includes(t.symbol)) return false;\n  if (/UP USDT|DOWN USDT/.test(t.symbol)) return false;\n  if (t.symbol.includes('UPUSDT') || t.symbol.includes('DOWNUSDT') || t.symbol.includes('BULLUSDT') || t.symbol.includes('BEARUSDT')) return false;\n  return true;\n});\n\nfiltered.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));\nconst top50 = filtered.slice(0, 50).map(t => ({ symbol: t.symbol }));\n\nreturn top50.map(t => ({ json: t }));"
       },
       "id": "code-filter-001",
       "name": "Filter Top 100 by Volume",

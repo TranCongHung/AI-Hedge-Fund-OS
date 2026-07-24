@@ -1,0 +1,327 @@
+{
+  "name": "WF-001b-v2-watchlist-driven",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "workflow_id",
+              "value": "WF-001b",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "started_at",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-001",
+      "name": "Set Workflow Meta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol FROM watchlist WHERE active = true ORDER BY score DESC;"
+      },
+      "id": "pg-watchlist-001",
+      "name": "Get Watchlist",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -700,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const symbols = $input.all().map(i => i.json.symbol);\nconst intervals = [\n  { interval: '1h', limit: 720, timeframe: '1h' },\n  { interval: '4h', limit: 180, timeframe: '4h' },\n  { interval: '1d', limit: 31,  timeframe: '1d' }\n];\n\nconst combos = [];\nfor (const symbol of symbols) {\n  for (const cfg of intervals) {\n    combos.push({ symbol, interval: cfg.interval, limit: cfg.limit, timeframe: cfg.timeframe });\n  }\n}\n\nreturn combos.map(c => ({ json: c }));"
+      },
+      "id": "code-combos-001",
+      "name": "Build Fetch Combos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-001",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.binance.com/api/v3/klines",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{$json.symbol}}"
+            },
+            {
+              "name": "interval",
+              "value": "={{$json.interval}}"
+            },
+            {
+              "name": "limit",
+              "value": "={{$json.limit}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-klines-001",
+      "name": "Get Klines",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const combo = $('Loop Over Items').first().json;\nconst items = $input.all().map(i => i.json);\n\nif (!Array.isArray(items) || items.length === 0 || !Array.isArray(items[0])) {\n  return [{ json: { error: true, symbol: combo.symbol, timeframe: combo.timeframe, message: 'khong nhan duoc du lieu hop le' } }];\n}\n\nreturn items.map(k => {\n  if (!Array.isArray(k)) {\n    return { json: { error: true, symbol: combo.symbol, timeframe: combo.timeframe, message: JSON.stringify(k) } };\n  }\n  return { json: {\n    symbol: combo.symbol,\n    timeframe: combo.timeframe,\n    open_time: new Date(k[0]).toISOString(),\n    open: parseFloat(k[1]),\n    high: parseFloat(k[2]),\n    low: parseFloat(k[3]),\n    close: parseFloat(k[4]),\n    volume: parseFloat(k[5]),\n    source: 'binance'\n  } };\n});"
+      },
+      "id": "code-parse-001",
+      "name": "Parse Candles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "market_prices"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "timeframe": "={{$json.timeframe}}",
+            "open_time": "{{$json.open_time}}",
+            "open": "{{$json.open}}",
+            "high": "{{$json.high}}",
+            "low": "{{$json.low}}",
+            "close": "{{$json.close}}",
+            "volume": "{{$json.volume}}",
+            "source": "={{$json.source}}"
+          }
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "pg-insert-001",
+      "name": "Insert Market Prices",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        380,
+        200
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "workflow_logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow_id": "={{$('Set Workflow Meta').first().json.workflow_id}}",
+            "execution_id": "={{$execution.id}}",
+            "status": "=success",
+            "duration_ms": "{{Date.now() - new Date($('Set Workflow Meta').first().json.started_at).getTime()}}",
+            "retry_count": "=0"
+          }
+        }
+      },
+      "id": "pg-log-001",
+      "name": "Insert Workflow Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -60,
+        460
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Workflow Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Workflow Meta": {
+      "main": [
+        [
+          {
+            "node": "Get Watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Watchlist": {
+      "main": [
+        [
+          {
+            "node": "Build Fetch Combos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Fetch Combos": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Insert Workflow Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Klines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Klines": {
+      "main": [
+        [
+          {
+            "node": "Parse Candles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Candles": {
+      "main": [
+        [
+          {
+            "node": "Insert Market Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Market Prices": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
