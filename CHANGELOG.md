@@ -1,4 +1,13 @@
 # Changelog
+## v1.0.0
+
+### Added
+- WF-080 Dashboard API: 2 webhook endpoint (dashboard-status, dashboard-signals) phục vụ giao diện Dashboard.
+- Kết nối giao diện UX_AI-Hedge-Fund-OS (React) với dữ liệu thật: Dashboard, Signals, AIChat.
+- Dashboard hiển thị trạng thái Postgres, watchlist, tín hiệu, tỷ lệ thắng backtest — thay thế hoàn toàn số liệu giả (CPU/RAM/GPU mock).
+
+### Fixed
+- Khôi phục container Docker sau sự cố bị xoá — dữ liệu được bảo toàn nhờ Docker volume tách biệt.
 ## v0.9.0
 
 ### Added
