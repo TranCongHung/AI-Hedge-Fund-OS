@@ -1,6 +1,7 @@
 # Workflow List
 | Workflow | Name | Module | Trigger | Status |
 |-----------|------|---------|----------|--------|
+| WF-000 | Master Orchestrator (2 tang: gio + ngay) | Orchestrator | Schedule | ✅ Active |
 | WF-001 | Binance Collector | Collector | Schedule | ✅ Active |
 | WF-001b | Historical Batch Collector v2 (doc tu watchlist) | Collector | Manual | ✅ Active |
 | WF-002 | CoinGecko Collector | Collector | Schedule | 🟡 Planned |

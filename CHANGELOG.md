@@ -1,4 +1,13 @@
 # Changelog
+## v1.1.0
+
+### Added
+- WF-000 Master Orchestrator: điều phối tự động toàn bộ pipeline, không cần bấm tay từng workflow.
+  - Nhánh mỗi giờ: WF-001b (giá) → WF-020 (tín hiệu).
+  - Nhánh mỗi ngày 00:00: WF-005 (quét lại watchlist) → WF-001b → WF-020 → WF-030 (backtest).
+
+### Note
+- Dùng Schedule Trigger nên chỉ chạy khi máy/Docker đang bật — không phải chạy nền 24/7 thật cho tới khi chuyển sang VPS. Kiến trúc đã sẵn sàng chuyển đổi không cần sửa gì khi có điều kiện.
 ## v1.0.0
 
 ### Added
