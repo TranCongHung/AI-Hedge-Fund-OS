@@ -1,4 +1,13 @@
 # Changelog
+## v1.2.0
+
+### Added
+- WF-020 v5: thêm Confidence Score (0-100) cho mỗi tín hiệu AI, dựa trên độ nhất quán xu hướng giữa các khung thời gian.
+- WF-025 Signal Outcome Evaluator: theo dõi tín hiệu AI qua 24 giờ, so sánh giá thật để tính ĐÚNG/SAI — nền tảng cho Paper Trading và đánh giá độ tin cậy AI theo thời gian.
+- Bảng signal_outcomes, cột confidence trong bảng signals.
+
+### Note
+- Ý tưởng lấy cảm hứng từ phản hồi AI Hedge Fund (mã nguồn mở) — chỉ áp dụng phần phù hợp với kiến trúc hiện tại (Confidence Score + Outcome Tracking), chưa triển khai Multi-Agent Debate vì thiếu nguồn dữ liệu đa dạng (Sentiment/Macro/On-chain) để làm cho việc tách Agent có ý nghĩa thật.
 ## v1.1.0
 
 ### Added

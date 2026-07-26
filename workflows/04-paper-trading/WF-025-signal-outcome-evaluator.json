@@ -1,0 +1,130 @@
+{
+  "name": "WF-025-signal-outcome-evaluator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.id, s.symbol, s.signal, s.confidence, s.price_at_signal,\n  (SELECT close FROM market_prices mp WHERE mp.symbol = s.symbol AND mp.timeframe = '1h' ORDER BY mp.open_time DESC LIMIT 1) AS current_price\nFROM signals s\nLEFT JOIN signal_outcomes so ON so.signal_id = s.id\nWHERE so.id IS NULL\n  AND s.signal != 'HOLD'\n  AND s.created_at < NOW() - INTERVAL '24 hours'\n  AND s.price_at_signal IS NOT NULL;"
+      },
+      "id": "pg-pending",
+      "name": "Get Signals Cho Danh Gia",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -680,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst results = [];\n\nfor (const r of rows) {\n  const priceAt = parseFloat(r.price_at_signal);\n  const priceNow = parseFloat(r.current_price);\n  if (!priceAt || !priceNow) continue;\n\n  const pctChange = ((priceNow - priceAt) / priceAt) * 100;\n\n  let outcome = 'NEUTRAL';\n  const THRESHOLD = 0.3; // % thay doi toi thieu de tinh la co y nghia\n  if (r.signal === 'BUY') {\n    if (pctChange > THRESHOLD) outcome = 'CORRECT';\n    else if (pctChange < -THRESHOLD) outcome = 'INCORRECT';\n  } else if (r.signal === 'SELL') {\n    if (pctChange < -THRESHOLD) outcome = 'CORRECT';\n    else if (pctChange > THRESHOLD) outcome = 'INCORRECT';\n  }\n\n  results.push({\n    signal_id: r.id,\n    symbol: r.symbol,\n    signal: r.signal,\n    confidence: r.confidence,\n    price_at_signal: priceAt,\n    price_evaluated: priceNow,\n    pct_change: Math.round(pctChange * 100) / 100,\n    outcome\n  });\n}\n\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "code-evaluate",
+      "name": "Tinh Dung/Sai",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "signal_outcomes"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "signal_id": "={{$json.signal_id}}",
+            "symbol": "={{$json.symbol}}",
+            "signal": "={{$json.signal}}",
+            "confidence": "{{$json.confidence}}",
+            "price_at_signal": "{{$json.price_at_signal}}",
+            "price_evaluated": "{{$json.price_evaluated}}",
+            "pct_change": "{{$json.pct_change}}",
+            "outcome": "={{$json.outcome}}"
+          }
+        }
+      },
+      "id": "pg-insert-outcome",
+      "name": "Luu Ket Qua",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -240,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Signals Cho Danh Gia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Signals Cho Danh Gia": {
+      "main": [
+        [
+          {
+            "node": "Tinh Dung/Sai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tinh Dung/Sai": {
+      "main": [
+        [
+          {
+            "node": "Luu Ket Qua",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
