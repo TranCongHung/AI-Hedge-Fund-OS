@@ -1,0 +1,212 @@
+{
+  "name": "WF-010-fred-macro-collector",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  { json: { series_id: 'DFF', series_name: 'Federal Funds Rate' } },\n  { json: { series_id: 'CPIAUCSL', series_name: 'Consumer Price Index' } },\n  { json: { series_id: 'DTWEXBGS', series_name: 'US Dollar Index (Broad)' } },\n  { json: { series_id: 'UNRATE', series_name: 'Unemployment Rate' } }\n];"
+      },
+      "id": "code-series",
+      "name": "Danh Sach Chi So Vi Mo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-001",
+      "name": "Loop Over Series",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.stlouisfed.org/fred/series/observations",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "series_id",
+              "value": "={{$json.series_id}}"
+            },
+            {
+              "name": "api_key",
+              "value": "REPLACE_WITH_YOUR_FRED_API_KEY"
+            },
+            {
+              "name": "file_type",
+              "value": "json"
+            },
+            {
+              "name": "sort_order",
+              "value": "asc"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-fred",
+      "name": "Goi FRED API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const combo = $('Loop Over Series').first().json;\nconst raw = $input.first().json;\n\nif (!raw.observations || !Array.isArray(raw.observations)) {\n  return [{ json: { error: true, series_id: combo.series_id, message: JSON.stringify(raw).slice(0, 200) } }];\n}\n\n// Chi lay 30 quan sat gan nhat, bo qua gia tri thieu (FRED danh dau '.')\nconst valid = raw.observations.filter(o => o.value !== '.');\nconst recent = valid.slice(-30);\n\nreturn recent.map(o => ({\n  json: {\n    series_id: combo.series_id,\n    series_name: combo.series_name,\n    observation_date: o.date,\n    value: parseFloat(o.value)\n  }\n}));"
+      },
+      "id": "code-parse",
+      "name": "Xu Ly Ket Qua",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "macro_data"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "series_id": "={{$json.series_id}}",
+            "series_name": "={{$json.series_name}}",
+            "observation_date": "={{$json.observation_date}}",
+            "value": "{{$json.value}}"
+          }
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Vao macro_data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        200,
+        200
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Danh Sach Chi So Vi Mo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Danh Sach Chi So Vi Mo": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Series",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Series": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Goi FRED API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Goi FRED API": {
+      "main": [
+        [
+          {
+            "node": "Xu Ly Ket Qua",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xu Ly Ket Qua": {
+      "main": [
+        [
+          {
+            "node": "Luu Vao macro_data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Luu Vao macro_data": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Series",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

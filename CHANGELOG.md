@@ -1,4 +1,12 @@
 # Changelog
+## v1.4.0
+
+### Added
+- WF-010 FRED Macro Collector: thu thập 4 chỉ số vĩ mô Mỹ (lãi suất, lạm phát, chỉ số đô la, thất nghiệp) — nền tảng dữ liệu cho Macro Agent (Phase C hoàn thành).
+- Bảng macro_data.
+
+### Note
+- Phase C (News + Macro data) đã hoàn thành. Đủ điều kiện để triển khai Phase D: tách WF-020 thành Multi-Agent thật (Technical + Sentiment + Macro + Risk + Manager), vì giờ mỗi Agent có nguồn dữ liệu riêng biệt thật sự.
 ## v1.2.0
 
 ### Added

@@ -1,0 +1,224 @@
+{
+  "name": "WF-003-news-collector",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://cointelegraph.com/rss",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "http-ct",
+      "name": "Get CoinTelegraph RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -680,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data || $input.first().json.body || $input.first().json || '';\nconst rawText = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nconst items = [];\nconst itemRegex = /<item>([\\s\\S]*?)<\\/item>/g;\nlet match;\nwhile ((match = itemRegex.exec(rawText)) !== null) {\n  const block = match[1];\n  const titleRaw = (block.match(/<title>([\\s\\S]*?)<\\/title>/) || [])[1] || '';\n  const linkRaw = (block.match(/<link>([\\s\\S]*?)<\\/link>/) || [])[1] || '';\n  const pubDateRaw = (block.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/) || [])[1] || '';\n\n  const clean = (s) => s.replace(/<!\\[CDATA\\[|\\]\\]>/g, '').trim();\n  const title = clean(titleRaw);\n  const link = clean(linkRaw);\n  let publishedAt = null;\n  try { publishedAt = pubDateRaw ? new Date(pubDateRaw).toISOString() : null; } catch (e) { publishedAt = null; }\n\n  if (title && link) {\n    items.push({ title, link, source: 'CoinTelegraph', published_at: publishedAt });\n  }\n}\n\nreturn items.slice(0, 20).map(i => ({ json: i }));"
+      },
+      "id": "code-ct",
+      "name": "Parse CoinTelegraph",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "http-cd",
+      "name": "Get CoinDesk RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -680,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data || $input.first().json.body || $input.first().json || '';\nconst rawText = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\nconst items = [];\nconst itemRegex = /<item>([\\s\\S]*?)<\\/item>/g;\nlet match;\nwhile ((match = itemRegex.exec(rawText)) !== null) {\n  const block = match[1];\n  const titleRaw = (block.match(/<title>([\\s\\S]*?)<\\/title>/) || [])[1] || '';\n  const linkRaw = (block.match(/<link>([\\s\\S]*?)<\\/link>/) || [])[1] || '';\n  const pubDateRaw = (block.match(/<pubDate>([\\s\\S]*?)<\\/pubDate>/) || [])[1] || '';\n\n  const clean = (s) => s.replace(/<!\\[CDATA\\[|\\]\\]>/g, '').trim();\n  const title = clean(titleRaw);\n  const link = clean(linkRaw);\n  let publishedAt = null;\n  try { publishedAt = pubDateRaw ? new Date(pubDateRaw).toISOString() : null; } catch (e) { publishedAt = null; }\n\n  if (title && link) {\n    items.push({ title, link, source: 'CoinDesk', published_at: publishedAt });\n  }\n}\n\nreturn items.slice(0, 20).map(i => ({ json: i }));"
+      },
+      "id": "code-cd",
+      "name": "Parse CoinDesk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "merge-001",
+      "name": "Merge News",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "news"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{$json.title}}",
+            "link": "={{$json.link}}",
+            "source": "={{$json.source}}",
+            "published_at": "{{$json.published_at}}"
+          }
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "pg-insert",
+      "name": "Insert News",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -20,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get CoinTelegraph RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get CoinDesk RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CoinTelegraph RSS": {
+      "main": [
+        [
+          {
+            "node": "Parse CoinTelegraph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CoinTelegraph": {
+      "main": [
+        [
+          {
+            "node": "Merge News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CoinDesk RSS": {
+      "main": [
+        [
+          {
+            "node": "Parse CoinDesk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CoinDesk": {
+      "main": [
+        [
+          {
+            "node": "Merge News",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge News": {
+      "main": [
+        [
+          {
+            "node": "Insert News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

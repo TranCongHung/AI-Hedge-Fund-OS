@@ -7,7 +7,7 @@
 | WF-002 | CoinGecko Collector | Collector | Schedule | 🟡 Planned |
 | WF-003 | RSS Collector | Collector | Schedule | 🟡 Planned |
 | WF-005 | Market Screener (Top 50 -> Top 10) | Screener | Manual | ✅ Active |
-| WF-010 | FRED Collector | Macro | Daily | 🟡 Planned |
+| WF-010 | FRED Macro Collector (DFF, CPI, DXY, Unemployment) | Macro | Manual | ✅ Active |
 | WF-020 | Research AI v5 (Groq + Confidence Score) | Research | Schedule | ✅ Active |
 | WF-025 | Signal Outcome Evaluator (Paper Trading) | Evaluation | Manual | ✅ Active |
 | WF-030 | Backtest Engine (EMA Cross + ATR/SR) | Backtest | Manual | ✅ Active |
