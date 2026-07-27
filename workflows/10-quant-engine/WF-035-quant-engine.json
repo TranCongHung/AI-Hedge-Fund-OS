@@ -1,0 +1,168 @@
+{
+  "name": "WF-035-quant-engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol, direction, entry_time, entry_price, exit_price, outcome FROM backtest_trades;"
+      },
+      "id": "pg-trades",
+      "name": "Lay Backtest Trades",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -480,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM quant_metrics;"
+      },
+      "id": "pg-clear",
+      "name": "Xoa Ket Qua Cu",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -260,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\n// Chi tinh tren cac lenh da dong (co ket qua ro rang)\nconst closed = rows.filter(r => ['TP1_HIT','TP2_HIT','SL1_HIT','SL2_HIT'].includes(r.outcome));\n\nfunction computeReturn(r) {\n  const entry = parseFloat(r.entry_price);\n  const exit = parseFloat(r.exit_price);\n  if (!entry || !exit) return null;\n  return r.direction === 'BUY' ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;\n}\n\nfunction mean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }\nfunction stdev(arr) {\n  const m = mean(arr);\n  return Math.sqrt(mean(arr.map(x => (x - m) ** 2)));\n}\nfunction sharpe(returns) {\n  if (returns.length < 2) return null;\n  const sd = stdev(returns);\n  return sd === 0 ? null : mean(returns) / sd;\n}\nfunction sortino(returns) {\n  const downside = returns.filter(r => r < 0);\n  if (downside.length === 0) return null;\n  const downsideDev = Math.sqrt(mean(downside.map(r => r * r)));\n  return downsideDev === 0 ? null : mean(returns) / downsideDev;\n}\nfunction maxDrawdown(returnsInOrder) {\n  let equity = 100, peak = 100, maxDD = 0;\n  for (const r of returnsInOrder) {\n    equity *= (1 + r / 100);\n    peak = Math.max(peak, equity);\n    const dd = (peak - equity) / peak * 100;\n    maxDD = Math.max(maxDD, dd);\n  }\n  return maxDD;\n}\n\nfunction computeMetrics(trades, label) {\n  const withReturns = trades\n    .map(t => ({ ...t, ret: computeReturn(t) }))\n    .filter(t => t.ret !== null)\n    .sort((a, b) => new Date(a.entry_time) - new Date(b.entry_time));\n\n  if (withReturns.length === 0) return null;\n\n  const returns = withReturns.map(t => t.ret);\n  const wins = returns.filter(r => r > 0);\n  const losses = returns.filter(r => r < 0);\n  const winRate = wins.length / returns.length;\n  const avgWin = wins.length ? mean(wins) : 0;\n  const avgLoss = losses.length ? Math.abs(mean(losses)) : 0;\n\n  let kelly = null;\n  if (avgLoss > 0) {\n    const R = avgWin / avgLoss;\n    kelly = winRate - (1 - winRate) / R;\n  }\n\n  return {\n    symbol: label,\n    total_trades: returns.length,\n    win_rate_pct: Math.round(winRate * 10000) / 100,\n    avg_win_pct: Math.round(avgWin * 100) / 100,\n    avg_loss_pct: Math.round(avgLoss * 100) / 100,\n    sharpe_ratio: sharpe(returns) !== null ? Math.round(sharpe(returns) * 1000) / 1000 : null,\n    sortino_ratio: sortino(returns) !== null ? Math.round(sortino(returns) * 1000) / 1000 : null,\n    max_drawdown_pct: Math.round(maxDrawdown(returns) * 100) / 100,\n    kelly_pct: kelly !== null ? Math.round(kelly * 10000) / 100 : null,\n    half_kelly_pct: kelly !== null ? Math.round(kelly * 5000) / 100 : null\n  };\n}\n\nconst results = [];\n\n// Tinh rieng cho tung symbol\nconst bySymbol = {};\nfor (const t of closed) {\n  if (!bySymbol[t.symbol]) bySymbol[t.symbol] = [];\n  bySymbol[t.symbol].push(t);\n}\nfor (const symbol in bySymbol) {\n  const m = computeMetrics(bySymbol[symbol], symbol);\n  if (m) results.push(m);\n}\n\n// Tinh tong the toan bo danh muc\nconst overall = computeMetrics(closed, 'PORTFOLIO');\nif (overall) results.push(overall);\n\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "code-quant",
+      "name": "Tinh Sharpe Sortino MaxDD Kelly",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "quant_metrics"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "total_trades": "{{$json.total_trades}}",
+            "win_rate_pct": "{{$json.win_rate_pct}}",
+            "avg_win_pct": "{{$json.avg_win_pct}}",
+            "avg_loss_pct": "{{$json.avg_loss_pct}}",
+            "sharpe_ratio": "{{$json.sharpe_ratio}}",
+            "sortino_ratio": "{{$json.sortino_ratio}}",
+            "max_drawdown_pct": "{{$json.max_drawdown_pct}}",
+            "kelly_pct": "{{$json.kelly_pct}}",
+            "half_kelly_pct": "{{$json.half_kelly_pct}}"
+          }
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Quant Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        180,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Xoa Ket Qua Cu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xoa Ket Qua Cu": {
+      "main": [
+        [
+          {
+            "node": "Lay Backtest Trades",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Backtest Trades": {
+      "main": [
+        [
+          {
+            "node": "Tinh Sharpe Sortino MaxDD Kelly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tinh Sharpe Sortino MaxDD Kelly": {
+      "main": [
+        [
+          {
+            "node": "Luu Quant Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Luu Quant Metrics": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

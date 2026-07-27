@@ -1,4 +1,12 @@
 # Changelog
+## v1.6.0
+
+### Added
+- WF-035 Quant Engine: tính Sharpe Ratio, Sortino Ratio, Max Drawdown, Kelly Criterion (và Half-Kelly) cho từng coin và toàn bộ danh mục, dựa trên dữ liệu backtest_trades.
+- Bảng quant_metrics.
+
+### Note
+- Kết quả ban đầu cho thấy chiến lược EMA-cross + ATR hiện tại chưa có lợi thế thống kê rõ ràng (Sharpe gần 0 hoặc âm) — cần tích luỹ thêm dữ liệu backtest (mẫu hiện tại chỉ 10-20 lệnh/coin) trước khi kết luận, và có thể cần điều chỉnh lại chiến lược.
 ## v1.5.0
 
 ### Added
@@ -17,6 +25,10 @@
 
 ### Note
 - Phase C (News + Macro data) đã hoàn thành. Đủ điều kiện để triển khai Phase D: tách WF-020 thành Multi-Agent thật (Technical + Sentiment + Macro + Risk + Manager), vì giờ mỗi Agent có nguồn dữ liệu riêng biệt thật sự.
+## v1.3.0
+
+### Added
+- WF-003 News/RSS Collector: thu thập tin tức crypto từ CoinDesk + CoinTelegraph, lưu vào bảng news.
 ## v1.2.0
 
 ### Added
