@@ -9,6 +9,9 @@
 | WF-005 | Market Screener (Top 50 -> Top 10) | Screener | Manual | ✅ Active |
 | WF-010 | FRED Macro Collector (DFF, CPI, DXY, Unemployment) | Macro | Manual | ✅ Active |
 | WF-020 | Research AI v5 (Groq + Confidence Score) | Research | Schedule | ✅ Active |
+| WF-021 | Sentiment Agent | Sentiment | Schedule | ✅ Active |
+| WF-022 | Macro Agent | Macro | Schedule | ✅ Active |
+| WF-023 | Manager (Investment Committee) | Manager | Manual | ✅ Active |
 | WF-025 | Signal Outcome Evaluator (Paper Trading) | Evaluation | Manual | ✅ Active |
 | WF-030 | Backtest Engine (EMA Cross + ATR/SR) | Backtest | Manual | ✅ Active |
 | WF-040 | On-chain AI | On-chain | Internal | 🟡 Planned |

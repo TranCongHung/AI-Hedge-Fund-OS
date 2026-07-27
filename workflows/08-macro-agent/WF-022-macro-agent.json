@@ -1,0 +1,201 @@
+{
+  "name": "WF-022-macro-agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 1,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "sch-001",
+      "name": "Moi ngay 01:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT series_id, observation_date, value FROM macro_data ORDER BY series_id, observation_date ASC;"
+      },
+      "id": "pg-macro",
+      "name": "Lay Du Lieu Vi Mo",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -680,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\n\nconst labels = {\n  DFF: 'Lai suat Fed (Federal Funds Rate, %)',\n  CPIAUCSL: 'Chi so gia tieu dung CPI (lam phat)',\n  DTWEXBGS: 'Chi so do la My (DXY, cang cao thi crypto/tai san rui ro thuong cang yeu)',\n  UNRATE: 'Ty le that nghiep My (%)'\n};\n\nconst bySeries = {};\nfor (const r of rows) {\n  if (!bySeries[r.series_id]) bySeries[r.series_id] = [];\n  bySeries[r.series_id].push(r);\n}\n\nconst lines = [];\nfor (const seriesId in bySeries) {\n  const arr = bySeries[seriesId].sort((a, b) => new Date(a.observation_date) - new Date(b.observation_date));\n  const first = arr[0].value;\n  const last = arr[arr.length - 1].value;\n  const change = (last - first).toFixed(2);\n  lines.push(`- ${labels[seriesId] || seriesId}: gia tri gan nhat ${last} (thay doi ${change} so voi ${arr.length} ky truoc)`);\n}\n\nconst prompt = `Ban la Macro Agent, chuyen phan tich anh huong cua kinh te vi mo My len tai san rui ro (bao gom crypto).\\nDu lieu vi mo gan day:\\n\\n${lines.join('\\n')}\\n\\nDua vao du lieu nay, danh gia trien vong CHUNG cho tai san rui ro/crypto trong boi canh vi mo hien tai.\\nTra loi DUY NHAT mot JSON object, khong markdown, dung format:\\n{\"signal\": \"BUY|SELL|HOLD\", \"confidence\": 0-100, \"reason\": \"giai thich ngan gon dua tren cac chi so vi mo\"}\\n\\nBUY = moi truong vi mo thuan loi cho tai san rui ro (lai suat giam, lam phat on dinh...), SELL = moi truong bat loi (lai suat tang, dola manh...), HOLD = trung tinh.`;\n\nreturn [{ json: { prompt } }];"
+      },
+      "id": "code-prompt",
+      "name": "Build Macro Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-groq",
+      "name": "Call Groq API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\n\nlet contentText = '';\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  contentText = raw.choices[0].message.content || '';\n}\nconst cleaned = contentText.replace(/```json|```/g, '').trim();\n\nlet parsed;\ntry { parsed = JSON.parse(cleaned); } catch (e) { parsed = null; }\n\nif (!parsed || !parsed.signal) {\n  parsed = { signal: 'HOLD', confidence: 0, reason: 'parse_error: AI khong tra ve JSON hop le' };\n}\n\nlet conf = parseInt(parsed.confidence, 10);\nif (isNaN(conf)) conf = null;\n\nreturn [{ json: {\n  signal: (parsed.signal || 'HOLD').toUpperCase(),\n  confidence: conf,\n  reason: parsed.reason || ''\n} }];"
+      },
+      "id": "code-parse",
+      "name": "Parse Macro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "macro_assessments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "signal": "={{$json.signal}}",
+            "confidence": "{{$json.confidence}}",
+            "reason": "={{$json.reason}}"
+          }
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Macro Assessment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        200,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Moi ngay 01:00": {
+      "main": [
+        [
+          {
+            "node": "Lay Du Lieu Vi Mo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Du Lieu Vi Mo": {
+      "main": [
+        [
+          {
+            "node": "Build Macro Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Macro Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API": {
+      "main": [
+        [
+          {
+            "node": "Parse Macro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Macro": {
+      "main": [
+        [
+          {
+            "node": "Luu Macro Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

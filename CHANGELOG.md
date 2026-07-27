@@ -1,4 +1,14 @@
 # Changelog
+## v1.5.0
+
+### Added
+- WF-021 Sentiment Agent: đánh giá tâm lý thị trường chung từ tin tức 48h qua.
+- WF-022 Macro Agent: đánh giá triển vọng vĩ mô chung từ 4 chỉ số kinh tế Mỹ.
+- WF-023 Manager (Investment Committee): kết hợp Technical + Sentiment + Macro để ra quyết định cuối cùng cho từng coin, có điều chỉnh confidence dựa trên sự đồng thuận/bất đồng giữa các Agent.
+- Bảng sentiment_assessments, macro_assessments, final_decisions.
+
+### Milestone
+- Phase D hoàn thành: Multi-Agent Debate thật sự, mỗi Agent có nguồn dữ liệu độc lập (giá/tin tức/vĩ mô), không còn "diễn" trên cùng 1 dữ liệu.
 ## v1.4.0
 
 ### Added

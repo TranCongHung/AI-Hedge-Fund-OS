@@ -1,0 +1,355 @@
+{
+  "name": "WF-023-manager-investment-committee",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (symbol) symbol, signal, confidence, reason FROM signals ORDER BY symbol, created_at DESC;"
+      },
+      "id": "pg-tech",
+      "name": "Lay Technical Signals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1000,
+        150
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT signal, confidence, reason FROM sentiment_assessments ORDER BY created_at DESC LIMIT 1;"
+      },
+      "id": "pg-sent",
+      "name": "Lay Sentiment Gan Nhat",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1000,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT signal, confidence, reason FROM macro_assessments ORDER BY created_at DESC LIMIT 1;"
+      },
+      "id": "pg-macro",
+      "name": "Lay Macro Gan Nhat",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1000,
+        450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3
+      },
+      "id": "merge-001",
+      "name": "Merge 3 Nguon",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const techRows = $('Lay Technical Signals').all().map(i => i.json);\nconst symbolList = techRows.map(r => r.symbol);\n\nconst CHUNK_SIZE = 5;\nconst chunks = [];\nfor (let i = 0; i < symbolList.length; i += CHUNK_SIZE) {\n  chunks.push(symbolList.slice(i, i + CHUNK_SIZE));\n}\n\nreturn chunks.map((chunk, idx) => ({ json: { chunk_index: idx, symbols: chunk } }));"
+      },
+      "id": "code-chunk",
+      "name": "Chia Nhom 5 Coin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-001",
+      "name": "Loop Over Chunks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chunk = $('Loop Over Chunks').first().json;\nconst symbolList = chunk.symbols;\n\nconst techRows = $('Lay Technical Signals').all().map(i => i.json);\nconst sentimentRow = $('Lay Sentiment Gan Nhat').first() ? $('Lay Sentiment Gan Nhat').first().json : null;\nconst macroRow = $('Lay Macro Gan Nhat').first() ? $('Lay Macro Gan Nhat').first().json : null;\n\nconst techBySymbol = {};\nfor (const t of techRows) techBySymbol[t.symbol] = t;\n\nconst sentimentText = sentimentRow\n  ? `${sentimentRow.signal} (confidence ${sentimentRow.confidence}) - ${sentimentRow.reason}`\n  : 'Chua co danh gia Sentiment';\nconst macroText = macroRow\n  ? `${macroRow.signal} (confidence ${macroRow.confidence}) - ${macroRow.reason}`\n  : 'Chua co danh gia Macro';\n\nconst techLines = symbolList.map(sym => {\n  const t = techBySymbol[sym];\n  if (!t) return `${sym}: (chua co du lieu Technical)`;\n  return `${sym}: Technical Agent noi ${t.signal} (confidence ${t.confidence}) - ${t.reason}`;\n});\n\nconst prompt = `Ban la Investment Committee (Manager AI) cua mot quy dau tu crypto nho.\\nBan nhan duoc 3 y kien tu 3 chuyen gia khac nhau:\\n\\n1. TECHNICAL AGENT (phan tich gia tung coin):\\n${techLines.join('\\n')}\\n\\n2. SENTIMENT AGENT (tam ly thi truong chung):\\n${sentimentText}\\n\\n3. MACRO AGENT (boi canh vi mo chung):\\n${macroText}\\n\\nHay dua ra QUYET DINH CUOI CUNG cho tung coin, ket hop ca 3 y kien tren. Neu Sentiment/Macro tieu cuc manh, co the ha thap confidence cua tin hieu Technical du Technical dang lac quan (va nguoc lai).\\n\\nTra loi DUY NHAT mot JSON array, khong markdown, dung format:\\n[{\"symbol\": \"BTCUSDT\", \"final_signal\": \"BUY|SELL|HOLD\", \"final_confidence\": 0-100, \"reason\": \"giai thich ngan gon dua tren ca 3 y kien\"}]\\n\\nPhai co du 1 object cho moi symbol: ${symbolList.join(', ')}`;\n\nreturn [{ json: { prompt, symbol_list: symbolList } }];"
+      },
+      "id": "code-prompt",
+      "name": "Build Committee Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-groq",
+      "name": "Call Groq API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        100,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst symbolList = $('Build Committee Prompt').first().json.symbol_list;\nconst techRows = $('Lay Technical Signals').all().map(i => i.json);\nconst sentimentRow = $('Lay Sentiment Gan Nhat').first() ? $('Lay Sentiment Gan Nhat').first().json : null;\nconst macroRow = $('Lay Macro Gan Nhat').first() ? $('Lay Macro Gan Nhat').first().json : null;\nconst techBySymbol = {};\nfor (const t of techRows) techBySymbol[t.symbol] = t;\n\nlet contentText = '';\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  contentText = raw.choices[0].message.content || '';\n}\nconst cleaned = contentText.replace(/```json|```/g, '').trim();\n\nlet parsed;\ntry { parsed = JSON.parse(cleaned); } catch (e) { parsed = []; }\n\nif (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {\n  parsed = Object.entries(parsed).map(([key, val]) => ({\n    symbol: (val && val.symbol) || key,\n    final_signal: val ? val.final_signal : undefined,\n    final_confidence: val ? val.final_confidence : undefined,\n    reason: val ? val.reason : undefined\n  }));\n}\n\nif (!Array.isArray(parsed) || parsed.length === 0) {\n  parsed = symbolList.map(symbol => ({\n    symbol, final_signal: 'HOLD', final_confidence: 0, reason: 'parse_error: AI khong tra ve JSON hop le'\n  }));\n}\n\nreturn parsed.map(p => {\n  const t = techBySymbol[p.symbol] || {};\n  let conf = parseInt(p.final_confidence, 10);\n  if (isNaN(conf)) conf = null;\n  return { json: {\n    symbol: p.symbol,\n    technical_signal: t.signal || null,\n    technical_confidence: t.confidence || null,\n    sentiment_signal: sentimentRow ? sentimentRow.signal : null,\n    macro_signal: macroRow ? macroRow.signal : null,\n    final_signal: (p.final_signal || 'HOLD').toUpperCase(),\n    final_confidence: conf,\n    reason: p.reason || ''\n  } };\n});"
+      },
+      "id": "code-parse",
+      "name": "Parse Final Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "final_decisions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "technical_signal": "={{$json.technical_signal}}",
+            "technical_confidence": "{{$json.technical_confidence}}",
+            "sentiment_signal": "={{$json.sentiment_signal}}",
+            "macro_signal": "={{$json.macro_signal}}",
+            "final_signal": "={{$json.final_signal}}",
+            "final_confidence": "{{$json.final_confidence}}",
+            "reason": "={{$json.reason}}"
+          }
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Final Decision",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        540,
+        200
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Lay Technical Signals",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Lay Sentiment Gan Nhat",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Lay Macro Gan Nhat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Technical Signals": {
+      "main": [
+        [
+          {
+            "node": "Merge 3 Nguon",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Sentiment Gan Nhat": {
+      "main": [
+        [
+          {
+            "node": "Merge 3 Nguon",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Lay Macro Gan Nhat": {
+      "main": [
+        [
+          {
+            "node": "Merge 3 Nguon",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge 3 Nguon": {
+      "main": [
+        [
+          {
+            "node": "Chia Nhom 5 Coin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chia Nhom 5 Coin": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Chunks": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Build Committee Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Committee Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API": {
+      "main": [
+        [
+          {
+            "node": "Parse Final Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Final Decision": {
+      "main": [
+        [
+          {
+            "node": "Luu Final Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Luu Final Decision": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

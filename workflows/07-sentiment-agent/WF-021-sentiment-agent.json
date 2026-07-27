@@ -1,0 +1,202 @@
+{
+  "name": "WF-021-sentiment-agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "sch-001",
+      "name": "Moi 6 gio",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT title, source, published_at FROM news WHERE published_at > NOW() - INTERVAL '48 hours' ORDER BY published_at DESC LIMIT 30;"
+      },
+      "id": "pg-news",
+      "name": "Lay Tin Tuc 48h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -680,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst headlines = rows.map(r => `- [${r.source}] ${r.title}`).join('\\n');\n\nconst prompt = `Ban la Sentiment Agent, chuyen phan tich tam ly thi truong crypto tu tin tuc.\\nDuoi day la ${rows.length} tieu de tin tuc gan day nhat:\\n\\n${headlines}\\n\\nDua vao cac tieu de nay, danh gia tam ly chung CUA TOAN BO THI TRUONG CRYPTO hien tai.\\nTra loi DUY NHAT mot JSON object, khong markdown, dung format:\\n{\"signal\": \"BUY|SELL|HOLD\", \"confidence\": 0-100, \"reason\": \"giai thich ngan gon dua tren cac tin tuc noi bat\"}\\n\\nBUY = tam ly tich cuc/lac quan, SELL = tam ly tieu cuc/lo so, HOLD = trung tinh/khong ro rang.`;\n\nreturn [{ json: { prompt, news_count: rows.length } }];"
+      },
+      "id": "code-prompt",
+      "name": "Build Sentiment Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-groq",
+      "name": "Call Groq API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst newsCount = $('Build Sentiment Prompt').first().json.news_count;\n\nlet contentText = '';\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  contentText = raw.choices[0].message.content || '';\n}\nconst cleaned = contentText.replace(/```json|```/g, '').trim();\n\nlet parsed;\ntry { parsed = JSON.parse(cleaned); } catch (e) { parsed = null; }\n\nif (!parsed || !parsed.signal) {\n  parsed = { signal: 'HOLD', confidence: 0, reason: 'parse_error: AI khong tra ve JSON hop le' };\n}\n\nlet conf = parseInt(parsed.confidence, 10);\nif (isNaN(conf)) conf = null;\n\nreturn [{ json: {\n  signal: (parsed.signal || 'HOLD').toUpperCase(),\n  confidence: conf,\n  reason: parsed.reason || '',\n  news_count: newsCount\n} }];"
+      },
+      "id": "code-parse",
+      "name": "Parse Sentiment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "sentiment_assessments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "signal": "={{$json.signal}}",
+            "confidence": "{{$json.confidence}}",
+            "reason": "={{$json.reason}}",
+            "news_count": "{{$json.news_count}}"
+          }
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Sentiment Assessment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        200,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Moi 6 gio": {
+      "main": [
+        [
+          {
+            "node": "Lay Tin Tuc 48h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Tin Tuc 48h": {
+      "main": [
+        [
+          {
+            "node": "Build Sentiment Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sentiment Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API": {
+      "main": [
+        [
+          {
+            "node": "Parse Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Luu Sentiment Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
