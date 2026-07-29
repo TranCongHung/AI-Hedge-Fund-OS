@@ -1,4 +1,15 @@
 # Changelog
+## v1.7.0
+
+### Added
+- WF-023 v2: nâng cấp Manager thành 2 vòng tranh luận thật (Round 2: Technical Agent xem xét lại trước phản biện của Sentiment/Macro; Round 3: quyết định cuối dựa trên quan điểm đã tranh luận).
+- Cột debated_technical_signal, debated_technical_confidence, debate_reason trong bảng final_decisions — lưu lại toàn bộ quá trình tranh luận để xem lại.
+
+### Fixed
+- Sửa lỗi AI tự sáng tạo logic "đếm phiếu" sai (cộng dồn confidence của Sentiment+Macro để áp đảo Technical Agent) bằng cách quy định rõ luật ưu tiên trong prompt: Technical quyết định hướng, Sentiment/Macro chỉ điều chỉnh độ tin cậy.
+
+### Milestone
+- AI Debate thật đã hoàn thành — đúng tinh thần Multi-Agent Debate mà ChatGPT đề xuất, không còn "đọc và tóm tắt" một chiều.
 ## v1.6.0
 
 ### Added

@@ -1,0 +1,449 @@
+{
+  "name": "WF-023-v2-manager-debate",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (symbol) symbol, signal, confidence, reason FROM signals ORDER BY symbol, created_at DESC;"
+      },
+      "id": "pg-tech",
+      "name": "Lay Technical Signals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1200,
+        150
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT signal, confidence, reason FROM sentiment_assessments ORDER BY created_at DESC LIMIT 1;"
+      },
+      "id": "pg-sent",
+      "name": "Lay Sentiment Gan Nhat",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1200,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT signal, confidence, reason FROM macro_assessments ORDER BY created_at DESC LIMIT 1;"
+      },
+      "id": "pg-macro",
+      "name": "Lay Macro Gan Nhat",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -1200,
+        450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3
+      },
+      "id": "merge-001",
+      "name": "Merge 3 Nguon",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const techRows = $('Lay Technical Signals').all().map(i => i.json);\nconst symbolList = techRows.map(r => r.symbol);\n\nconst CHUNK_SIZE = 5;\nconst chunks = [];\nfor (let i = 0; i < symbolList.length; i += CHUNK_SIZE) {\n  chunks.push(symbolList.slice(i, i + CHUNK_SIZE));\n}\n\nreturn chunks.map((chunk, idx) => ({ json: { chunk_index: idx, symbols: chunk } }));"
+      },
+      "id": "code-chunk",
+      "name": "Chia Nhom 5 Coin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-001",
+      "name": "Loop Over Chunks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chunk = $('Loop Over Chunks').first().json;\nconst symbolList = chunk.symbols;\n\nconst techRows = $('Lay Technical Signals').all().map(i => i.json);\nconst sentimentRow = $('Lay Sentiment Gan Nhat').first() ? $('Lay Sentiment Gan Nhat').first().json : null;\nconst macroRow = $('Lay Macro Gan Nhat').first() ? $('Lay Macro Gan Nhat').first().json : null;\n\nconst techBySymbol = {};\nfor (const t of techRows) techBySymbol[t.symbol] = t;\n\nconst sentimentText = sentimentRow\n  ? `${sentimentRow.signal} (confidence ${sentimentRow.confidence}) - ${sentimentRow.reason}`\n  : 'Chua co danh gia Sentiment';\nconst macroText = macroRow\n  ? `${macroRow.signal} (confidence ${macroRow.confidence}) - ${macroRow.reason}`\n  : 'Chua co danh gia Macro';\n\nconst techLines = symbolList.map(sym => {\n  const t = techBySymbol[sym];\n  if (!t) return `${sym}: (chua co du lieu Technical)`;\n  return `${sym}: Ban (Technical Agent) da ket luan ${t.signal} (confidence ${t.confidence}) - Ly do: ${t.reason}`;\n});\n\nconst prompt = `Ban dang dong vai Technical Agent. Ban vua dua ra nhan dinh ky thuat rieng cho cac coin sau:\\n${techLines.join('\\n')}\\n\\nBAY GIO, 2 thanh vien khac trong hoi dong dau tu (Investment Committee) trinh bay y kien khac ve BOI CANH CHUNG cua thi truong:\\n- Sentiment Agent (tam ly thi truong): ${sentimentText}\\n- Macro Agent (vi mo kinh te): ${macroText}\\n\\nHay XEM XET LAI tung nhan dinh ky thuat cua ban duoi anh huong cua 2 y kien nay:\\n- Neu boi canh chung UNG HO quan diem ky thuat cua ban, hay GIU NGUYEN hoac TANG do tin cay.\\n- Neu boi canh chung MAU THUAN voi quan diem ky thuat cua ban, hay CAN NHAC GIAM do tin cay (khong nhat thiet phai doi tin hieu, nhung phai the hien su can nhac that su).\\n\\nTra loi DUY NHAT mot JSON array, khong markdown, dung format:\\n[{\"symbol\": \"BTCUSDT\", \"signal\": \"BUY|SELL|HOLD\", \"confidence\": 0-100, \"reason\": \"lap luan cua ban SAU KHI da can nhac phan bien tu Sentiment va Macro\"}]\\n\\nPhai co du 1 object cho moi symbol: ${symbolList.join(', ')}`;\n\nreturn [{ json: { prompt, symbol_list: symbolList } }];"
+      },
+      "id": "code-debate-prompt",
+      "name": "Build Debate Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-debate",
+      "name": "Call Groq (Vong Tranh Luan)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -100,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst symbolList = $('Build Debate Prompt').first().json.symbol_list;\n\nlet contentText = '';\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  contentText = raw.choices[0].message.content || '';\n}\nconst cleaned = contentText.replace(/```json|```/g, '').trim();\n\nlet parsed;\ntry { parsed = JSON.parse(cleaned); } catch (e) { parsed = []; }\n\nif (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {\n  parsed = Object.entries(parsed).map(([key, val]) => ({\n    symbol: (val && val.symbol) || key,\n    signal: val ? val.signal : undefined,\n    confidence: val ? val.confidence : undefined,\n    reason: val ? val.reason : undefined\n  }));\n}\n\nif (!Array.isArray(parsed) || parsed.length === 0) {\n  const techRows = $('Lay Technical Signals').all().map(i => i.json);\n  const techBySymbol = {};\n  for (const t of techRows) techBySymbol[t.symbol] = t;\n  parsed = symbolList.map(symbol => {\n    const t = techBySymbol[symbol] || {};\n    return { symbol, signal: t.signal || 'HOLD', confidence: t.confidence || 0, reason: 'debate_parse_error: giu nguyen quan diem goc' };\n  });\n}\n\nreturn parsed.map(p => {\n  let conf = parseInt(p.confidence, 10);\n  if (isNaN(conf)) conf = null;\n  return { json: {\n    symbol: p.symbol,\n    debated_signal: (p.signal || 'HOLD').toUpperCase(),\n    debated_confidence: conf,\n    debate_reason: p.reason || ''\n  } };\n});"
+      },
+      "id": "code-parse-debate",
+      "name": "Parse Ket Qua Tranh Luan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chunk = $('Loop Over Chunks').first().json;\nconst symbolList = chunk.symbols;\nconst debated = $input.all().map(i => i.json);\n\nconst sentimentRow = $('Lay Sentiment Gan Nhat').first() ? $('Lay Sentiment Gan Nhat').first().json : null;\nconst macroRow = $('Lay Macro Gan Nhat').first() ? $('Lay Macro Gan Nhat').first().json : null;\n\nconst sentimentText = sentimentRow ? `${sentimentRow.signal} (confidence ${sentimentRow.confidence})` : 'khong ro';\nconst macroText = macroRow ? `${macroRow.signal} (confidence ${macroRow.confidence})` : 'khong ro';\n\nconst lines = debated.map(d => `${d.symbol}: SAU TRANH LUAN, Technical Agent ket luan ${d.debated_signal} (confidence ${d.debated_confidence}) - ${d.debate_reason}`);\n\nconst prompt = `Ban la Investment Committee (Manager AI) cua mot quy dau tu crypto nho.\\nDuoi day la ket luan CUOI CUNG cua Technical Agent, SAU KHI da tranh luan va can nhac ca boi canh Sentiment (${sentimentText}) va Macro (${macroText}):\\n\\n${lines.join('\\n')}\\n\\nHay dua ra QUYET DINH DAU TU cuoi cung cho tung coin.\\n\\nTra loi DUY NHAT mot JSON array, khong markdown, dung format:\\n[{\"symbol\": \"BTCUSDT\", \"final_signal\": \"BUY|SELL|HOLD\", \"final_confidence\": 0-100, \"reason\": \"quyet dinh cuoi cung, tom tat qua trinh tranh luan\"}]\\n\\nPhai co du 1 object cho moi symbol: ${symbolList.join(', ')}`;\n\nreturn [{ json: { prompt, symbol_list: symbolList, debated_map: debated } }];"
+      },
+      "id": "code-final-prompt",
+      "name": "Build Final Synthesis Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-final",
+      "name": "Call Groq (Vong Quyet Dinh)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst symbolList = $('Build Final Synthesis Prompt').first().json.symbol_list;\nconst debatedMap = $('Build Final Synthesis Prompt').first().json.debated_map;\nconst debatedBySymbol = {};\nfor (const d of debatedMap) debatedBySymbol[d.symbol] = d;\n\nconst techRows = $('Lay Technical Signals').all().map(i => i.json);\nconst techBySymbol = {};\nfor (const t of techRows) techBySymbol[t.symbol] = t;\n\nconst sentimentRow = $('Lay Sentiment Gan Nhat').first() ? $('Lay Sentiment Gan Nhat').first().json : null;\nconst macroRow = $('Lay Macro Gan Nhat').first() ? $('Lay Macro Gan Nhat').first().json : null;\n\nlet contentText = '';\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  contentText = raw.choices[0].message.content || '';\n}\nconst cleaned = contentText.replace(/```json|```/g, '').trim();\n\nlet parsed;\ntry { parsed = JSON.parse(cleaned); } catch (e) { parsed = []; }\n\nif (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {\n  parsed = Object.entries(parsed).map(([key, val]) => ({\n    symbol: (val && val.symbol) || key,\n    final_signal: val ? val.final_signal : undefined,\n    final_confidence: val ? val.final_confidence : undefined,\n    reason: val ? val.reason : undefined\n  }));\n}\n\nif (!Array.isArray(parsed) || parsed.length === 0) {\n  parsed = symbolList.map(symbol => {\n    const d = debatedBySymbol[symbol] || {};\n    return { symbol, final_signal: d.debated_signal || 'HOLD', final_confidence: d.debated_confidence || 0, reason: 'final_parse_error: dung ket qua tranh luan' };\n  });\n}\n\nreturn parsed.map(p => {\n  const t = techBySymbol[p.symbol] || {};\n  const d = debatedBySymbol[p.symbol] || {};\n  let conf = parseInt(p.final_confidence, 10);\n  if (isNaN(conf)) conf = null;\n  return { json: {\n    symbol: p.symbol,\n    technical_signal: t.signal || null,\n    technical_confidence: t.confidence || null,\n    sentiment_signal: sentimentRow ? sentimentRow.signal : null,\n    macro_signal: macroRow ? macroRow.signal : null,\n    debated_technical_signal: d.debated_signal || null,\n    debated_technical_confidence: d.debated_confidence || null,\n    debate_reason: d.debate_reason || '',\n    final_signal: (p.final_signal || 'HOLD').toUpperCase(),\n    final_confidence: conf,\n    reason: p.reason || ''\n  } };\n});"
+      },
+      "id": "code-parse-final",
+      "name": "Parse Final Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "final_decisions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "technical_signal": "={{$json.technical_signal}}",
+            "technical_confidence": "{{$json.technical_confidence}}",
+            "sentiment_signal": "={{$json.sentiment_signal}}",
+            "macro_signal": "={{$json.macro_signal}}",
+            "debated_technical_signal": "={{$json.debated_technical_signal}}",
+            "debated_technical_confidence": "{{$json.debated_technical_confidence}}",
+            "debate_reason": "={{$json.debate_reason}}",
+            "final_signal": "={{$json.final_signal}}",
+            "final_confidence": "{{$json.final_confidence}}",
+            "reason": "={{$json.reason}}"
+          }
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Final Decision",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1000,
+        200
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Lay Technical Signals",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Lay Sentiment Gan Nhat",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Lay Macro Gan Nhat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Technical Signals": {
+      "main": [
+        [
+          {
+            "node": "Merge 3 Nguon",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Sentiment Gan Nhat": {
+      "main": [
+        [
+          {
+            "node": "Merge 3 Nguon",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Lay Macro Gan Nhat": {
+      "main": [
+        [
+          {
+            "node": "Merge 3 Nguon",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge 3 Nguon": {
+      "main": [
+        [
+          {
+            "node": "Chia Nhom 5 Coin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chia Nhom 5 Coin": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Chunks": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Build Debate Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Debate Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Groq (Vong Tranh Luan)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq (Vong Tranh Luan)": {
+      "main": [
+        [
+          {
+            "node": "Parse Ket Qua Tranh Luan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ket Qua Tranh Luan": {
+      "main": [
+        [
+          {
+            "node": "Build Final Synthesis Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Final Synthesis Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Groq (Vong Quyet Dinh)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq (Vong Quyet Dinh)": {
+      "main": [
+        [
+          {
+            "node": "Parse Final Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Final Decision": {
+      "main": [
+        [
+          {
+            "node": "Luu Final Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Luu Final Decision": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
