@@ -1,15 +1,14 @@
-# Changelog
-## v1.7.0
-
-### Added
-- WF-023 v2: nâng cấp Manager thành 2 vòng tranh luận thật (Round 2: Technical Agent xem xét lại trước phản biện của Sentiment/Macro; Round 3: quyết định cuối dựa trên quan điểm đã tranh luận).
-- Cột debated_technical_signal, debated_technical_confidence, debate_reason trong bảng final_decisions — lưu lại toàn bộ quá trình tranh luận để xem lại.
-
-### Fixed
-- Sửa lỗi AI tự sáng tạo logic "đếm phiếu" sai (cộng dồn confidence của Sentiment+Macro để áp đảo Technical Agent) bằng cách quy định rõ luật ưu tiên trong prompt: Technical quyết định hướng, Sentiment/Macro chỉ điều chỉnh độ tin cậy.
-
-### Milestone
-- AI Debate thật đã hoàn thành — đúng tinh thần Multi-Agent Debate mà ChatGPT đề xuất, không còn "đọc và tóm tắt" một chiều.
+###Changelog
+###v1.8.0
+###Added
+WF-050 Risk AI: đánh giá rủi ro tự động cho từng coin trong watchlist (volatility, ATR regime, tương quan với BTC, max drawdown lịch sử) → risk_level (LOW/MEDIUM/HIGH) và risk_score (0-100).
+Bảng risk_assessments (migration 012_risk_assessments.sql).
+###Fixed
+WF-001b v2 (watchlist-driven collector): node Insert Market Prices thiếu mapping cột low khi ghi vào market_prices, khiến toàn bộ dữ liệu low của các coin trong watchlist (ngoại trừ BTC/ETH/SOL thu qua WF-001 gốc) bị NULL kể từ khi tạo workflow. Hậu quả: WF-050 không tính được ATR regime (luôn ra "khong_du_du_lieu") cho toàn bộ coin ngoài BTCUSDT.
+Đã dọn dữ liệu rác (các dòng market_prices có low IS NULL) và thu thập lại đầy đủ 3 khung thời gian (1h/4h/1d) cho toàn bộ watchlist.
+Cập nhật workflow-list.md: WF-001 và WF-050 chuyển trạng thái sang ✅ Active (trước đó bị bỏ sót/ghi sai Planned dù đã hoạt động).
+###Note
+Bug thiếu cột low tồn tại từ commit gốc tạo WF-001b v2, không phải lỗi phát sinh sau này — bài học: khi thêm cột mới vào bảng DB hoặc thêm field trong Code node, luôn double-check lại đủ mapping ở node Insert (n8n không cảnh báo khi thiếu 1 cột không bắt buộc, nó tự set NULL âm thầm).
 ## v1.6.0
 
 ### Added

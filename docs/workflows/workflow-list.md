@@ -16,7 +16,7 @@
 | WF-030 | Backtest Engine (EMA Cross + ATR/SR) | Backtest | Manual | ✅ Active |
 | WF-035 | Quant Engine (Sharpe/Sortino/MaxDD/Kelly) | Analytics | Manual | ✅ Active |
 | WF-040 | On-chain AI | On-chain | Internal | 🟡 Planned |
-| WF-050 | Risk AI | Risk | Internal | 🟡 Planned |
+| WF-050 | Risk AI | Risk | Internal | ✅ Active |
 | WF-060 | Manager AI | Manager | Internal | 🟡 Planned |
 | WF-070 | AI Chat Assistant (Groq API) | Manager | Webhook | ✅ Active |
 | WF-080 | Dashboard API (status + signals) | Dashboard | Webhook | ✅ Active |

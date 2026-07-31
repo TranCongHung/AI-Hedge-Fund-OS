@@ -1,17 +1,6 @@
 {
-  "name": "WF-001b-v2-watchlist-driven",
+  "name": "WF-001b V2",
   "nodes": [
-    {
-      "parameters": {},
-      "id": "manual-001",
-      "name": "Manual Trigger",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        -1100,
-        300
-      ]
-    },
     {
       "parameters": {
         "assignments": {
@@ -29,34 +18,36 @@
               "type": "string"
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "set-001",
+      "id": "c12e1716-f4a1-4489-b700-4468cb4ec272",
       "name": "Set Workflow Meta",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -900,
-        300
+        -840,
+        100
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT symbol FROM watchlist WHERE active = true ORDER BY score DESC;"
+        "query": "SELECT symbol FROM watchlist WHERE active = true ORDER BY score DESC;",
+        "options": {}
       },
-      "id": "pg-watchlist-001",
+      "id": "cc5cbdde-0923-4a51-97a0-87c79857ebc1",
       "name": "Get Watchlist",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -700,
-        300
+        -640,
+        100
       ],
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
-          "name": "AIQRP Postgres"
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
         }
       }
     },
@@ -64,32 +55,30 @@
       "parameters": {
         "jsCode": "const symbols = $input.all().map(i => i.json.symbol);\nconst intervals = [\n  { interval: '1h', limit: 720, timeframe: '1h' },\n  { interval: '4h', limit: 180, timeframe: '4h' },\n  { interval: '1d', limit: 31,  timeframe: '1d' }\n];\n\nconst combos = [];\nfor (const symbol of symbols) {\n  for (const cfg of intervals) {\n    combos.push({ symbol, interval: cfg.interval, limit: cfg.limit, timeframe: cfg.timeframe });\n  }\n}\n\nreturn combos.map(c => ({ json: c }));"
       },
-      "id": "code-combos-001",
+      "id": "ee5c2978-1e83-4b4e-b5db-f68c10e3663d",
       "name": "Build Fetch Combos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -500,
-        300
+        -440,
+        100
       ]
     },
     {
       "parameters": {
-        "batchSize": 1,
         "options": {}
       },
-      "id": "loop-001",
+      "id": "2c1fdb54-47f8-4e2e-8bed-6b9944afac72",
       "name": "Loop Over Items",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        -280,
-        300
+        -220,
+        100
       ]
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "https://api.binance.com/api/v3/klines",
         "sendQuery": true,
         "queryParameters": {
@@ -112,13 +101,13 @@
           "timeout": 15000
         }
       },
-      "id": "http-klines-001",
+      "id": "4455802e-2cc9-4172-b47f-04ec6a42302b",
       "name": "Get Klines",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -60,
-        200
+        0,
+        0
       ],
       "retryOnFail": true,
       "maxTries": 2,
@@ -129,19 +118,19 @@
       "parameters": {
         "jsCode": "const combo = $('Loop Over Items').first().json;\nconst items = $input.all().map(i => i.json);\n\nif (!Array.isArray(items) || items.length === 0 || !Array.isArray(items[0])) {\n  return [{ json: { error: true, symbol: combo.symbol, timeframe: combo.timeframe, message: 'khong nhan duoc du lieu hop le' } }];\n}\n\nreturn items.map(k => {\n  if (!Array.isArray(k)) {\n    return { json: { error: true, symbol: combo.symbol, timeframe: combo.timeframe, message: JSON.stringify(k) } };\n  }\n  return { json: {\n    symbol: combo.symbol,\n    timeframe: combo.timeframe,\n    open_time: new Date(k[0]).toISOString(),\n    open: parseFloat(k[1]),\n    high: parseFloat(k[2]),\n    low: parseFloat(k[3]),\n    close: parseFloat(k[4]),\n    volume: parseFloat(k[5]),\n    source: 'binance'\n  } };\n});"
       },
-      "id": "code-parse-001",
+      "id": "4f53242a-c2ef-45be-abe0-f8e0fda9b9de",
       "name": "Parse Candles",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        160,
-        200
+        220,
+        0
       ]
     },
     {
       "parameters": {
-        "operation": "insert",
         "schema": {
+          "__rl": true,
           "mode": "list",
           "value": "public"
         },
@@ -154,39 +143,167 @@
           "value": {
             "symbol": "={{$json.symbol}}",
             "timeframe": "={{$json.timeframe}}",
-            "open_time": "{{$json.open_time}}",
-            "open": "{{$json.open}}",
-            "high": "{{$json.high}}",
-            "low": "{{$json.low}}",
-            "close": "{{$json.close}}",
-            "volume": "{{$json.volume}}",
-            "source": "={{$json.source}}"
-          }
+            "open_time": "={{$json.open_time}}",
+            "source": "={{$json.source}}",
+            "open": "={{$json.open}}",
+            "high": "={{$json.high}}",
+            "low": "={{$json.low}}",
+            "close": "={{$json.close}}",
+            "volume": "={{$json.volume}}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "symbol",
+              "displayName": "symbol",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timeframe",
+              "displayName": "timeframe",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "open_time",
+              "displayName": "open_time",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "open",
+              "displayName": "open",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "high",
+              "displayName": "high",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "low",
+              "displayName": "low",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "close",
+              "displayName": "close",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "volume",
+              "displayName": "volume",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "deleted_at",
+              "displayName": "deleted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {
           "skipOnConflict": true
         }
       },
-      "id": "pg-insert-001",
+      "id": "b85aa9ce-ddef-4f69-8944-5b41e2a98205",
       "name": "Insert Market Prices",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        380,
-        200
+        440,
+        0
       ],
-      "continueOnFail": true,
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
-          "name": "AIQRP Postgres"
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
         }
-      }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "operation": "insert",
         "schema": {
+          "__rl": true,
           "mode": "list",
           "value": "public"
         },
@@ -200,40 +317,125 @@
             "workflow_id": "={{$('Set Workflow Meta').first().json.workflow_id}}",
             "execution_id": "={{$execution.id}}",
             "status": "=success",
-            "duration_ms": "{{Date.now() - new Date($('Set Workflow Meta').first().json.started_at).getTime()}}",
-            "retry_count": "=0"
-          }
-        }
+            "retry_count": "={{$execution.retry_count}}",
+            "duration_ms": "={{$execution.duration_ms}}",
+            "error_message": "={{$execution.error_message}}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "workflow_id",
+              "displayName": "workflow_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duration_ms",
+              "displayName": "duration_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
       },
-      "id": "pg-log-001",
+      "id": "a1cd60ee-2a98-4306-a435-21a031466b47",
       "name": "Insert Workflow Log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -60,
-        460
+        0,
+        260
       ],
-      "continueOnFail": true,
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
-          "name": "AIQRP Postgres"
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
         }
-      }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1020,
+        100
+      ],
+      "id": "98e2d9a4-d700-46dd-9a97-bad7060e9d3b",
+      "name": "When clicking ‘Test workflow’"
     }
   ],
+  "pinData": {},
   "connections": {
-    "Manual Trigger": {
-      "main": [
-        [
-          {
-            "node": "Set Workflow Meta",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Set Workflow Meta": {
       "main": [
         [
@@ -317,11 +519,28 @@
           }
         ]
       ]
+    },
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "Set Workflow Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "pinData": {}
+  "versionId": "3cca5876-0c71-429b-8bc5-2fe60060efaf",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e6b7a7e059b33164f1df43e7753cc515aad81c10b01c922a42f369e5eec460a7"
+  },
+  "id": "GIRtb1xbouwVK51u",
+  "tags": []
 }

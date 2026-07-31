@@ -1,0 +1,223 @@
+{
+  "name": "WF-050-risk-agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM risk_assessments;"
+      },
+      "id": "pg-clear",
+      "name": "Xoa Ket Qua Cu",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -500,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol, open_time, high, low, close FROM market_prices\nWHERE timeframe = '1h'\n  AND (symbol IN (SELECT symbol FROM watchlist WHERE active = true) OR symbol = 'BTCUSDT')\nORDER BY symbol, open_time ASC;"
+      },
+      "id": "pg-prices",
+      "name": "Lay Gia 1h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -280,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT symbol, max_drawdown_pct FROM quant_metrics WHERE symbol != 'PORTFOLIO';"
+      },
+      "id": "pg-quant",
+      "name": "Lay Quant Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -280,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "id": "merge-001",
+      "name": "Merge Du Lieu",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -60,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Lay Gia 1h').all().map(i => i.json).map(r => ({\n  ...r, close: parseFloat(r.close), high: parseFloat(r.high), low: parseFloat(r.low), open_time: new Date(r.open_time)\n})).sort((a, b) => a.open_time - b.open_time);\n\nconst quantRows = $('Lay Quant Metrics').all().map(i => i.json);\nconst maxDDBySymbol = {};\nfor (const q of quantRows) maxDDBySymbol[q.symbol] = parseFloat(q.max_drawdown_pct);\n\nconst bySymbol = {};\nfor (const r of rows) {\n  if (!bySymbol[r.symbol]) bySymbol[r.symbol] = [];\n  bySymbol[r.symbol].push(r);\n}\n\nfunction pctReturns(candles) {\n  const rets = [];\n  for (let i = 1; i < candles.length; i++) {\n    const prev = candles[i - 1].close;\n    const cur = candles[i].close;\n    if (prev > 0) rets.push(((cur - prev) / prev) * 100);\n  }\n  return rets;\n}\n\nfunction stdev(arr) {\n  if (arr.length === 0) return 0;\n  const m = arr.reduce((a, b) => a + b, 0) / arr.length;\n  return Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length);\n}\n\nfunction pearson(x, y) {\n  const n = Math.min(x.length, y.length);\n  if (n < 2) return null;\n  const xs = x.slice(-n), ys = y.slice(-n);\n  const mx = xs.reduce((a, b) => a + b, 0) / n;\n  const my = ys.reduce((a, b) => a + b, 0) / n;\n  let cov = 0, sx = 0, sy = 0;\n  for (let i = 0; i < n; i++) {\n    cov += (xs[i] - mx) * (ys[i] - my);\n    sx += (xs[i] - mx) ** 2;\n    sy += (ys[i] - my) ** 2;\n  }\n  if (sx === 0 || sy === 0) return null;\n  return cov / Math.sqrt(sx * sy);\n}\n\nfunction atr(candles, period) {\n  const trs = [];\n  for (let i = 0; i < candles.length; i++) {\n    if (i === 0) { trs.push(candles[i].high - candles[i].low); continue; }\n    const pc = candles[i - 1].close;\n    trs.push(Math.max(candles[i].high - candles[i].low, Math.abs(candles[i].high - pc), Math.abs(candles[i].low - pc)));\n  }\n  if (trs.length < period) return { current: null, average: null };\n  const recent = trs.slice(-period);\n  const currentATR = recent.reduce((a, b) => a + b, 0) / period;\n  const avgATR = trs.reduce((a, b) => a + b, 0) / trs.length;\n  return { current: currentATR, average: avgATR };\n}\n\nconst btcCandles = bySymbol['BTCUSDT'] || [];\nconst btcReturns = pctReturns(btcCandles);\n\nconst results = [];\n\nfor (const symbol in bySymbol) {\n  const candles = bySymbol[symbol];\n  if (candles.length < 30) continue;\n\n  const returns = pctReturns(candles);\n  const vol = stdev(returns);\n\n  const atrInfo = atr(candles, 14);\n  let atrRatio = null, atrRegime = 'khong_du_du_lieu';\n  if (atrInfo.current !== null && atrInfo.average > 0) {\n    atrRatio = atrInfo.current / atrInfo.average;\n    if (atrRatio > 1.5) atrRegime = 'tang_cao';\n    else if (atrRatio < 0.7) atrRegime = 'thap';\n    else atrRegime = 'binh_thuong';\n  }\n\n  const corr = symbol === 'BTCUSDT' ? 1 : pearson(returns, btcReturns);\n  const maxDD = maxDDBySymbol[symbol] !== undefined ? maxDDBySymbol[symbol] : null;\n\n  // Xep hang rui ro dua tren 3 yeu to: volatility, atr regime, max drawdown\n  let highCount = 0;\n  const reasons = [];\n\n  if (vol > 3) { highCount++; reasons.push(`bien dong cao (${vol.toFixed(2)}%/gio)`); }\n  else if (vol > 1) { reasons.push(`bien dong trung binh (${vol.toFixed(2)}%/gio)`); }\n  else { reasons.push(`bien dong thap (${vol.toFixed(2)}%/gio)`); }\n\n  if (atrRegime === 'tang_cao') { highCount++; reasons.push(`ATR dang tang cao bat thuong (x${atrRatio.toFixed(2)} so voi trung binh)`); }\n  else if (atrRegime === 'thap') { reasons.push('ATR dang thap hon binh thuong'); }\n\n  if (maxDD !== null) {\n    if (maxDD > 30) { highCount++; reasons.push(`max drawdown lich su cao (${maxDD.toFixed(1)}%)`); }\n    else if (maxDD > 15) { reasons.push(`max drawdown lich su trung binh (${maxDD.toFixed(1)}%)`); }\n    else { reasons.push(`max drawdown lich su thap (${maxDD.toFixed(1)}%)`); }\n  }\n\n  let riskLevel = 'LOW';\n  if (highCount >= 2) riskLevel = 'HIGH';\n  else if (highCount === 1) riskLevel = 'MEDIUM';\n\n  const riskScore = Math.min(100, Math.round((vol / 5 * 40) + (atrRatio ? Math.min(atrRatio, 3) / 3 * 30 : 15) + (maxDD ? Math.min(maxDD, 50) / 50 * 30 : 15)));\n\n  if (corr !== null) {\n    reasons.push(`tuong quan voi BTC: ${corr.toFixed(2)}`);\n  }\n\n  results.push({\n    symbol,\n    volatility_pct: Math.round(vol * 100) / 100,\n    atr_regime: atrRegime,\n    atr_regime_ratio: atrRatio !== null ? Math.round(atrRatio * 100) / 100 : null,\n    correlation_btc: corr !== null ? Math.round(corr * 100) / 100 : null,\n    max_drawdown_pct: maxDD,\n    risk_level: riskLevel,\n    risk_score: riskScore,\n    reason: reasons.join('; ')\n  });\n}\n\nreturn results.map(r => ({ json: r }));"
+      },
+      "id": "code-risk",
+      "name": "Tinh Toan Rui Ro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "risk_assessments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "volatility_pct": "{{$json.volatility_pct}}",
+            "atr_regime": "={{$json.atr_regime}}",
+            "atr_regime_ratio": "{{$json.atr_regime_ratio}}",
+            "correlation_btc": "{{$json.correlation_btc}}",
+            "max_drawdown_pct": "{{$json.max_drawdown_pct}}",
+            "risk_level": "={{$json.risk_level}}",
+            "risk_score": "{{$json.risk_score}}",
+            "reason": "={{$json.reason}}"
+          }
+        }
+      },
+      "id": "pg-insert",
+      "name": "Luu Risk Assessment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        380,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "AIQRP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Xoa Ket Qua Cu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xoa Ket Qua Cu": {
+      "main": [
+        [
+          {
+            "node": "Lay Gia 1h",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Lay Quant Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Gia 1h": {
+      "main": [
+        [
+          {
+            "node": "Merge Du Lieu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Quant Metrics": {
+      "main": [
+        [
+          {
+            "node": "Merge Du Lieu",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Du Lieu": {
+      "main": [
+        [
+          {
+            "node": "Tinh Toan Rui Ro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tinh Toan Rui Ro": {
+      "main": [
+        [
+          {
+            "node": "Luu Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
