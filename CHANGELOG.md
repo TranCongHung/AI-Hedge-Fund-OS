@@ -1,14 +1,51 @@
 ###Changelog
-###v1.8.0
-###Added
-WF-050 Risk AI: đánh giá rủi ro tự động cho từng coin trong watchlist (volatility, ATR regime, tương quan với BTC, max drawdown lịch sử) → risk_level (LOW/MEDIUM/HIGH) và risk_score (0-100).
-Bảng risk_assessments (migration 012_risk_assessments.sql).
-###Fixed
-WF-001b v2 (watchlist-driven collector): node Insert Market Prices thiếu mapping cột low khi ghi vào market_prices, khiến toàn bộ dữ liệu low của các coin trong watchlist (ngoại trừ BTC/ETH/SOL thu qua WF-001 gốc) bị NULL kể từ khi tạo workflow. Hậu quả: WF-050 không tính được ATR regime (luôn ra "khong_du_du_lieu") cho toàn bộ coin ngoài BTCUSDT.
-Đã dọn dữ liệu rác (các dòng market_prices có low IS NULL) và thu thập lại đầy đủ 3 khung thời gian (1h/4h/1d) cho toàn bộ watchlist.
-Cập nhật workflow-list.md: WF-001 và WF-050 chuyển trạng thái sang ✅ Active (trước đó bị bỏ sót/ghi sai Planned dù đã hoạt động).
-###Note
-Bug thiếu cột low tồn tại từ commit gốc tạo WF-001b v2, không phải lỗi phát sinh sau này — bài học: khi thêm cột mới vào bảng DB hoặc thêm field trong Code node, luôn double-check lại đủ mapping ở node Insert (n8n không cảnh báo khi thiếu 1 cột không bắt buộc, nó tự set NULL âm thầm).
+
+## v1.9.0
+
+### Security
+- **[NGHIEM TRONG]** Phat hien `docker/.env` (chua mat khau Postgres that) da bi commit len GitHub public tu commit dau tien, do file `.gitignore` bi loi (chua literal text cua 1 lenh PowerShell thay vi cac rule that).
+- Da doi toan bo credential bi lo: mat khau Postgres moi (ngau nhien 24 ky tu), `N8N_ENCRYPTION_KEY` moi (hex 64 ky tu).
+- Da purge `docker/.env` khoi toan bo lich su git (24 commit + tag v1.4.0) bang `git filter-branch`, sau do force-push de ghi de tren GitHub. Da xac nhan sach bang clone doc lap.
+- Sua `.gitignore` de hoat dong dung (truoc day khong loai tru duoc `.env` do noi dung bi loi).
+- Bind cong Postgres ve `127.0.0.1:5432` thay vi mo ra toan bo network (`0.0.0.0:5432`), giam be mat tan cong.
+- Viet noi dung that cho `docs/standards/security-standard.md` (truoc do file nay hoan toan trong).
+- Sua `docker-compose.lite.yml`: bo cach dung `${VAR}` de tham chieu bien (gay loi "variable not set" vi Docker Compose tim `.env` sai thu muc), thay bang `env_file` bom truc tiep bien vao container.
+
+### Added
+- WF-060 Manager AI: ket hop `final_decisions` (WF-023) + `risk_assessments` (WF-050) de ra tin hieu cuoi cung da dieu chinh theo rui ro (risk-adjusted signal) va ty le von de xuat (position size %).
+- Bang `risk_adjusted_decisions` (migration 013_risk_adjusted_decisions.sql).
+- Mo rong pham vi thu thap gia (`WF-001b v2`) va tinh risk (`WF-050`) tu chi 10 coin trong watchlist sang toan bo symbol xuat hien trong `final_decisions`.
+
+### Note
+- Sau khi doi `N8N_ENCRYPTION_KEY`, credential Postgres cu trong n8n khong the giai ma duoc nua va hien gia tri mac dinh sai (host=localhost, db=postgres, user=postgres) thay vi bao loi ro rang - da phai sua lai thu cong ca 4 truong (host/database/user/password) trong n8n UI, khong chi mat khau.
+- Da lam ro nguyen tac trong `security-standard.md`: 1 secret chi nen co 1 nguon su that (single source of truth qua `.env`), khong duplicate hardcode o nhieu noi.
+
+## v1.8.0
+
+### Added
+- WF-050 Risk AI: đánh giá rủi ro tự động cho từng coin trong watchlist (volatility, ATR regime, tương quan với BTC, max drawdown lịch sử) → risk_level (LOW/MEDIUM/HIGH) và risk_score (0-100).
+- Bảng risk_assessments (migration 012_risk_assessments.sql).
+
+### Fixed
+- WF-001b v2 (watchlist-driven collector): node Insert Market Prices thiếu mapping cột `low` khi ghi vào market_prices, khiến toàn bộ dữ liệu `low` của các coin trong watchlist (ngoại trừ BTC/ETH/SOL thu qua WF-001 gốc) bị NULL kể từ khi tạo workflow. Hậu quả: WF-050 không tính được ATR regime (luôn ra "khong_du_du_lieu") cho toàn bộ coin ngoài BTCUSDT.
+- Đã dọn dữ liệu rác (các dòng market_prices có low IS NULL) và thu thập lại đầy đủ 3 khung thời gian (1h/4h/1d) cho toàn bộ watchlist.
+- Cập nhật workflow-list.md: WF-001 và WF-050 chuyển trạng thái sang ✅ Active (trước đó bị bỏ sót/ghi sai Planned dù đã hoạt động).
+
+### Note
+- Bug thiếu cột `low` tồn tại từ commit gốc tạo WF-001b v2, không phải lỗi phát sinh sau này — bài học: khi thêm cột mới vào bảng DB hoặc thêm field trong Code node, luôn double-check lại đủ mapping ở node Insert (n8n không cảnh báo khi thiếu 1 cột không bắt buộc, nó tự set NULL âm thầm).
+
+## v1.7.0
+
+### Added
+- WF-023 v2: nâng cấp Manager thành 2 vòng tranh luận thật (Round 2: Technical Agent xem xét lại trước phản biện của Sentiment/Macro; Round 3: quyết định cuối dựa trên quan điểm đã tranh luận).
+- Cột debated_technical_signal, debated_technical_confidence, debate_reason trong bảng final_decisions — lưu lại toàn bộ quá trình tranh luận để xem lại.
+
+### Fixed
+- Sửa lỗi AI tự sáng tạo logic "đếm phiếu" sai (cộng dồn confidence của Sentiment+Macro để áp đảo Technical Agent) bằng cách quy định rõ luật ưu tiên trong prompt: Technical quyết định hướng, Sentiment/Macro chỉ điều chỉnh độ tin cậy.
+
+### Milestone
+- AI Debate thật đã hoàn thành — đúng tinh thần Multi-Agent Debate mà ChatGPT đề xuất, không còn "đọc và tóm tắt" một chiều.
+
 ## v1.6.0
 
 ### Added
