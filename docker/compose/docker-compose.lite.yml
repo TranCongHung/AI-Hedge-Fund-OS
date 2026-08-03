@@ -10,7 +10,7 @@ services:
       - ../.env
 
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -28,6 +28,9 @@ services:
 
     restart: unless-stopped
 
+    env_file:
+      - ../.env
+
     ports:
       - "5678:5678"
 
@@ -35,18 +38,12 @@ services:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=quant
-      - DB_POSTGRESDB_USER=ai
-      - DB_POSTGRESDB_PASSWORD=ai123
 
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
 
       - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
-      - TZ=Asia/Ho_Chi_Minh
-
-      - N8N_ENCRYPTION_KEY=CHANGE_THIS_TO_A_LONG_RANDOM_STRING_123456789
 
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
 
