@@ -17,7 +17,7 @@
 | WF-035 | Quant Engine (Sharpe/Sortino/MaxDD/Kelly) | Analytics | Manual | ✅ Active |
 | WF-040 | On-chain AI | On-chain | Internal | 🟡 Planned |
 | WF-050 | Risk AI | Risk | Internal | ✅ Active |
-| WF-060 | Manager AI | Manager | Internal | 🟡 Planned |
+| WF-060 | Manager AI | Manager | Internal | ✅ Active |
 | WF-070 | AI Chat Assistant (Groq API) | Manager | Webhook | ✅ Active |
 | WF-080 | Dashboard API (status + signals) | Dashboard | Webhook | ✅ Active |
 | WF-090 | Daily Report | Report | Schedule | 🟡 Planned |

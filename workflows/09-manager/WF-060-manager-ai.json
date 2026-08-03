@@ -1,0 +1,260 @@
+{
+  "name": "WF-060 Manager AI",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        100
+      ],
+      "id": "n0-manual-trigger",
+      "name": "When clicking 'Test workflow'"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "workflow_id",
+              "value": "WF-060",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "started_at",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n1-set-meta",
+      "name": "Set Workflow Meta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -600,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (symbol) symbol, final_signal, final_confidence FROM final_decisions ORDER BY symbol, created_at DESC;",
+        "options": {}
+      },
+      "id": "n2-get-final",
+      "name": "Lay Final Decisions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -400,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (symbol) symbol, risk_level, risk_score, atr_regime FROM risk_assessments ORDER BY symbol, created_at DESC;",
+        "options": {}
+      },
+      "id": "n3-get-risk",
+      "name": "Lay Risk Assessments",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -200,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const finalRows = $(\"Lay Final Decisions\").all().map(i => i.json);\nconst riskRows = $(\"Lay Risk Assessments\").all().map(i => i.json);\n\nconst riskBySymbol = {};\nfor (const r of riskRows) riskBySymbol[r.symbol] = r;\n\nconst results = [];\n\nfor (const f of finalRows) {\n  const risk = riskBySymbol[f.symbol] || null;\n\n  const originalSignal = (f.final_signal || \"HOLD\").toUpperCase();\n  const originalConfidence = f.final_confidence !== null && f.final_confidence !== undefined\n    ? parseFloat(f.final_confidence) : null;\n\n  let adjustedSignal = originalSignal;\n  let adjustedConfidence = originalConfidence;\n  let positionSize = 100;\n  const reasons = [];\n\n  if (!risk) {\n    reasons.push(\"Chua co danh gia Risk AI cho coin nay - giu nguyen tin hieu goc, giam position size de an toan\");\n    positionSize = 50;\n  } else {\n    const riskLevel = risk.risk_level;\n    const atrRegime = risk.atr_regime;\n\n    if (riskLevel === \"HIGH\") {\n      adjustedSignal = \"HOLD\";\n      adjustedConfidence = originalConfidence !== null ? Math.round(originalConfidence * 0.3) : null;\n      positionSize = 0;\n      reasons.push(`Risk AI danh gia HIGH risk (score ${risk.risk_score}) - tam hoan giao dich du tin hieu goc la ${originalSignal}`);\n    } else if (riskLevel === \"MEDIUM\") {\n      adjustedConfidence = originalConfidence !== null ? Math.round(originalConfidence * 0.7) : null;\n      positionSize = 50;\n      reasons.push(`Risk AI danh gia MEDIUM risk (score ${risk.risk_score}) - giam confidence va position size xuong 50%`);\n    } else {\n      reasons.push(`Risk AI danh gia LOW risk (score ${risk.risk_score}) - giu nguyen tin hieu va full position size`);\n    }\n\n    if (atrRegime === \"tang_cao\" && positionSize > 0) {\n      positionSize = Math.max(0, positionSize - 20);\n      reasons.push(\"ATR dang tang cao bat thuong - giam them 20% position size de phong ngua bien dong dot bien\");\n    }\n  }\n\n  results.push({\n    json: {\n      symbol: f.symbol,\n      original_signal: originalSignal,\n      original_confidence: originalConfidence,\n      risk_level: risk ? risk.risk_level : null,\n      risk_score: risk ? risk.risk_score : null,\n      atr_regime: risk ? risk.atr_regime : null,\n      adjusted_signal: adjustedSignal,\n      adjusted_confidence: adjustedConfidence,\n      position_size_pct: positionSize,\n      reason: reasons.join(\"; \")\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "n5-apply-rules",
+      "name": "Ap Dung Luat Dieu Chinh Rui Ro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "risk_adjusted_decisions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "symbol": "={{$json.symbol}}",
+            "original_signal": "={{$json.original_signal}}",
+            "original_confidence": "={{$json.original_confidence}}",
+            "risk_level": "={{$json.risk_level}}",
+            "risk_score": "={{$json.risk_score}}",
+            "atr_regime": "={{$json.atr_regime}}",
+            "adjusted_signal": "={{$json.adjusted_signal}}",
+            "adjusted_confidence": "={{$json.adjusted_confidence}}",
+            "position_size_pct": "={{$json.position_size_pct}}",
+            "reason": "={{$json.reason}}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "n6-insert",
+      "name": "Luu Risk Adjusted Decision",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "mode": "list",
+          "value": "workflow_logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow_id": "={{$(\"Set Workflow Meta\").first().json.workflow_id}}",
+            "execution_id": "={{$execution.id}}",
+            "status": "=success",
+            "duration_ms": "={{Date.now() - new Date($(\"Set Workflow Meta\").first().json.started_at).getTime()}}",
+            "retry_count": "=0"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "n7-log",
+      "name": "Insert Workflow Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Set Workflow Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Workflow Meta": {
+      "main": [
+        [
+          {
+            "node": "Lay Final Decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Final Decisions": {
+      "main": [
+        [
+          {
+            "node": "Lay Risk Assessments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lay Risk Assessments": {
+      "main": [
+        [
+          {
+            "node": "Ap Dung Luat Dieu Chinh Rui Ro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ap Dung Luat Dieu Chinh Rui Ro": {
+      "main": [
+        [
+          {
+            "node": "Luu Risk Adjusted Decision",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert Workflow Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "WF060MgrAI0001",
+  "tags": []
+}
