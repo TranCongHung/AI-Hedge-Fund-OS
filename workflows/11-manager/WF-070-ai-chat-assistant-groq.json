@@ -1,5 +1,5 @@
 {
-  "name": "WF-070-ai-chat-assistant-groq",
+  "name": "WF-070",
   "nodes": [
     {
       "parameters": {
@@ -25,13 +25,13 @@
           }
         }
       },
-      "id": "webhook-001",
+      "id": "5177f2b3-d621-4a6c-89aa-6e5105e83497",
       "name": "Webhook Chat",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -900,
-        300
+        -640,
+        40
       ],
       "webhookId": "ai-chat-001"
     },
@@ -46,68 +46,71 @@
               "type": "string"
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "set-start-001",
+      "id": "634a849b-ba8f-49fe-9623-d993853c70d0",
       "name": "Set Started At",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -680,
-        300
+        -420,
+        40
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT DISTINCT ON (symbol) symbol, signal, reason, price_at_signal, created_at FROM signals ORDER BY symbol, created_at DESC;"
+        "query": "SELECT DISTINCT ON (symbol) symbol, signal, reason, price_at_signal, created_at FROM signals ORDER BY symbol, created_at DESC;",
+        "options": {}
       },
-      "id": "pg-001",
+      "id": "795fbf7e-2f92-41d0-a28e-5796354b2048",
       "name": "Get Latest Signals",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -460,
-        200
+        -200,
+        -60
       ],
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
-          "name": "AIQRP Postgres"
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT DISTINCT ON (symbol) symbol, close, open_time FROM market_prices WHERE timeframe = '1h' ORDER BY symbol, open_time DESC;"
+        "query": "SELECT DISTINCT ON (symbol) symbol, close, open_time FROM market_prices WHERE timeframe = '1h' ORDER BY symbol, open_time DESC;",
+        "options": {}
       },
-      "id": "pg-002",
+      "id": "f4d1822b-73cf-4036-bf1c-61b58453d955",
       "name": "Get Latest Prices",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -460,
-        400
+        -200,
+        140
       ],
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
-          "name": "AIQRP Postgres"
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const message = $('Webhook Chat').first().json.body.message || \"\";\nconst signals = $('Get Latest Signals').all().map(i => i.json);\nconst prices = $('Get Latest Prices').all().map(i => i.json);\n\nconst priceMap = Object.fromEntries(prices.map(p => [p.symbol, p.close]));\n\nconst dataLines = signals.map(s => {\n  const price = priceMap[s.symbol] || \"khong ro\";\n  return `${s.symbol}: gia hien tai ${price}, tin hieu AI da luu: ${s.signal} (ly do: ${s.reason})`;\n});\n\nconst prompt = `Ban la mot tro ly AI quan ly quy dau tu crypto nho, than thien va de thuong. Duoi day la du lieu moi nhat:\\n${dataLines.join('\\n')}\\n\\nCau hoi cua nguoi dung: \"${message}\"\\n\\nHay tra loi BANG TIENG VIET, ngan gon, de hieu, dua tren du lieu tren. Neu cau hoi khong lien quan den du lieu, van tra loi than thien binh thuong. Khong dung markdown code block.`;\n\nreturn [{ json: { prompt } }];"
+        "jsCode": "const webhookData = $('Webhook Chat').first().json;\nconst message = (webhookData.body && webhookData.body.message) || webhookData.message || \"\";\nconst signals = $('Get Latest Signals').all().map(i => i.json);\nconst prices = $('Get Latest Prices').all().map(i => i.json);\nconst priceMap = Object.fromEntries(prices.map(p => [p.symbol, p.close]));\nconst dataLines = signals.map(s => {\n  const price = priceMap[s.symbol] || \"khong ro\";\n  return `${s.symbol}: gia hien tai ${price}, tin hieu AI da luu: ${s.signal} (ly do: ${s.reason})`;\n});\nconst prompt = `Ban la mot tro ly AI quan ly quy dau tu crypto nho, than thien va de thuong. Duoi day la du lieu moi nhat:\\n${dataLines.join('\\n')}\\n\\nCau hoi cua nguoi dung: \"${message}\"\\n\\nHay tra loi BANG TIENG VIET, ngan gon, de hieu, dua tren du lieu tren. Neu cau hoi khong lien quan den du lieu, van tra loi than thien binh thuong. Khong dung markdown code block.`;\nreturn [{ json: { prompt } }];"
       },
-      "id": "code-001",
+      "id": "9bb1d64e-1ed7-416e-99e5-d7e2fc1d8b94",
       "name": "Build Context Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -240,
-        300
+        240,
+        40
       ]
     },
     {
@@ -118,47 +121,47 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: \"openai/gpt-oss-20b\", messages: [{ role: \"user\", content: $json.prompt }] } }}",
+        "jsonBody": "={\n  \"model\": \"openai/gpt-oss-20b\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.prompt) }} }\n  ]\n}",
         "options": {
           "timeout": 20000
         }
       },
-      "id": "http-001",
+      "id": "beefdc0a-1935-4288-bab9-f66900b5bd50",
       "name": "Call Groq API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -20,
-        300
+        460,
+        40
       ],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 1500,
-      "onError": "continueRegularOutput",
       "credentials": {
         "httpHeaderAuth": {
-          "id": "REPLACE_WITH_YOUR_GROQ_CREDENTIAL_ID",
-          "name": "Groq API Key"
+          "id": "QXOhsglvc7hkx1Ge",
+          "name": "Header Auth account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "jsCode": "const raw = $input.first().json;\nlet reply = \"Xin loi, minh chua nghi ra cau tra loi.\";\nif (raw.choices && raw.choices[0] && raw.choices[0].message) {\n  reply = (raw.choices[0].message.content || reply).trim();\n} else if (raw.error) {\n  reply = \"Loi ket noi AI: \" + JSON.stringify(raw.error);\n}\nreturn [{ json: { reply } }];"
       },
-      "id": "code-002",
+      "id": "c2189288-cf69-4622-b857-96f82acdca78",
       "name": "Extract Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        200,
-        300
+        680,
+        40
       ]
     },
     {
       "parameters": {
-        "operation": "insert",
         "schema": {
+          "__rl": true,
           "mode": "list",
           "value": "public"
         },
@@ -172,26 +175,110 @@
             "workflow_id": "=WF-070",
             "execution_id": "={{$execution.id}}",
             "status": "=success",
-            "duration_ms": "{{Date.now() - new Date($('Set Started At').first().json.started_at).getTime()}}",
-            "retry_count": "=0"
-          }
-        }
+            "retry_count": "={{$execution.retry_count}}",
+            "duration_ms": "={{Date.now() - new Date($('Set Started At').first().json.started_at).getTime()}}",
+            "error_message": "={{0}}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "workflow_id",
+              "displayName": "workflow_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duration_ms",
+              "displayName": "duration_ms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "retry_count",
+              "displayName": "retry_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
       },
-      "id": "pg-003",
+      "id": "98a93065-aa4e-4b98-998f-102d40ce9926",
       "name": "Insert Workflow Log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        420,
-        300
+        900,
+        40
       ],
-      "continueOnFail": true,
       "credentials": {
         "postgres": {
-          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
-          "name": "AIQRP Postgres"
+          "id": "hWb0sbzHs3AnkkG4",
+          "name": "Postgres account"
         }
-      }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -208,16 +295,28 @@
           }
         }
       },
-      "id": "respond-001",
+      "id": "27252ed1-af53-43c6-8eda-d300a4043e39",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.2,
       "position": [
-        640,
-        300
+        1120,
+        40
       ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        40,
+        40
+      ],
+      "id": "d4eb4346-b873-41f2-a96e-17052c816175",
+      "name": "Append"
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook Chat": {
       "main": [
@@ -250,7 +349,7 @@
       "main": [
         [
           {
-            "node": "Build Context Prompt",
+            "node": "Append",
             "type": "main",
             "index": 0
           }
@@ -261,9 +360,9 @@
       "main": [
         [
           {
-            "node": "Build Context Prompt",
+            "node": "Append",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -311,11 +410,28 @@
           }
         ]
       ]
+    },
+    "Append": {
+      "main": [
+        [
+          {
+            "node": "Build Context Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
-  "pinData": {}
-}
+  "versionId": "42b23953-567d-4777-bb3a-3f9bd2c94708",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba246012496e2ce9cfbd4d014907aa7d3cd70142ddecc82eb63466bec9c40547"
+  },
+  "id": "Tlj01v51D4zD7PHu",
+  "tags": []
+}
