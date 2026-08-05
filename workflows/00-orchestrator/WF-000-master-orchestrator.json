@@ -68,7 +68,7 @@
         "workflowId": {
           "__rl": true,
           "mode": "list",
-          "value": "REPLACE_CHON_WF-020-research-ai-v4-groq"
+          "value": "REPLACE_CHON_WF-020-research-ai-v5-confidence"
         }
       },
       "id": "exec-020-h",
@@ -108,7 +108,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        -20,
+        640,
         100
       ],
       "continueOnFail": true,
@@ -205,7 +205,7 @@
         "workflowId": {
           "__rl": true,
           "mode": "list",
-          "value": "REPLACE_CHON_WF-020-research-ai-v4-groq"
+          "value": "REPLACE_CHON_WF-020-research-ai-v5-confidence"
         }
       },
       "id": "exec-020-d",
@@ -274,6 +274,63 @@
           "name": "AIQRP Postgres"
         }
       }
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_CHON_WF-023-v2-manager-debate"
+        }
+      },
+      "id": "exec-023-h",
+      "name": "Chay WF-023 (debate)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -20,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_CHON_WF-050-risk-agent"
+        }
+      },
+      "id": "exec-050-h",
+      "name": "Chay WF-050 (risk)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_CHON_WF-060-manager-ai"
+        }
+      },
+      "id": "exec-060-h",
+      "name": "Chay WF-060 (quyet dinh cuoi)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        0
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -314,7 +371,7 @@
       "main": [
         [
           {
-            "node": "Ghi log (gio)",
+            "node": "Chay WF-023 (debate)",
             "type": "main",
             "index": 0
           }
@@ -381,6 +438,39 @@
         [
           {
             "node": "Ghi log (ngay)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chay WF-023 (debate)": {
+      "main": [
+        [
+          {
+            "node": "Chay WF-050 (risk)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chay WF-050 (risk)": {
+      "main": [
+        [
+          {
+            "node": "Chay WF-060 (quyet dinh cuoi)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chay WF-060 (quyet dinh cuoi)": {
+      "main": [
+        [
+          {
+            "node": "Ghi log (gio)",
             "type": "main",
             "index": 0
           }

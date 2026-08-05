@@ -77,10 +77,10 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all().map(i => i.json);\nconst symbolSet = new Set(rows.map(r => r.symbol));\nconst symbols = Array.from(symbolSet);\n\nconst CHUNK_SIZE = 5;\nconst chunks = [];\nfor (let i = 0; i < symbols.length; i += CHUNK_SIZE) {\n  chunks.push(symbols.slice(i, i + CHUNK_SIZE));\n}\n\nreturn chunks.map((chunk, idx) => ({ json: { chunk_index: idx, symbols: chunk } }));"
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst symbolSet = new Set(rows.map(r => r.symbol));\nconst symbols = Array.from(symbolSet);\n\nconst CHUNK_SIZE = 10;\nconst chunks = [];\nfor (let i = 0; i < symbols.length; i += CHUNK_SIZE) {\n  chunks.push(symbols.slice(i, i + CHUNK_SIZE));\n}\n\nreturn chunks.map((chunk, idx) => ({ json: { chunk_index: idx, symbols: chunk } }));"
       },
       "id": "code-chunk-001",
-      "name": "Build Symbol Chunks (5/nhom)",
+      "name": "Build Symbol Chunks (10/nhom)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
